@@ -1,17 +1,30 @@
 <template>
-  <div class="sidebar" :class="{ collapsed: isCollapsed }">
-    <div class="sidebar-header">
-      <button class="collapse-btn" @click="toggleCollapse">
-        {{ isCollapsed ? '>' : '<' }}
-      </button>
-      <button v-if="!isCollapsed" class="new-chat-btn" @click="newChat" :disabled="isGenerating">
-        <span>+ 新建对话</span>
-      </button>
+  <div>
+    <!-- 移动端遮罩层 -->
+    <div v-if="!isCollapsed" class="mobile-overlay" @click="toggleCollapse"></div>
+    
+    <div class="sidebar" :class="{ collapsed: isCollapsed }">
+      <div class="sidebar-header">
+         <button class="collapse-btn" @click="toggleCollapse">
+           <span class="collapse-icon" :class="{ 'is-open': !isCollapsed }">{{ isCollapsed ? '☰' : '✕' }}</span>
+         </button>
+        <button v-if="!isCollapsed" class="new-chat-btn" @click="newChat" :disabled="isGenerating">
+          <span>+ 新建对话</span>
+        </button>
+      </div>
+
+    <div v-if="!isCollapsed" class="search-container">
+      <input
+        type="text"
+        v-model="searchQuery"
+        placeholder="搜索对话..."
+        class="search-input"
+      />
     </div>
 
     <div class="conversation-list" v-if="!isCollapsed">
       <div 
-        v-for="(conv, index) in conversations" 
+        v-for="(conv, index) in filteredConversations" 
         :key="conv.id"
         :class="{
           active: currentConversationIndex === conv.originalIndex,
@@ -40,6 +53,7 @@
         <span>+</span>
       </button>
     </div>
+    </div>
   </div>
 </template>
 
@@ -52,7 +66,8 @@ export default {
   },
   data() {
     return {
-      isCollapsed: JSON.parse(localStorage.getItem('sidebarCollapsed') || 'false')
+      isCollapsed: JSON.parse(localStorage.getItem('sidebarCollapsed') || 'false'),
+      searchQuery: ''
     };
   },
   mounted() {
@@ -68,6 +83,12 @@ export default {
         return;
       }
       this.$emit('switch-conversation', index);
+      
+      // 移动端切换对话后自动关闭侧边栏
+      if (window.innerWidth <= 768) {
+        this.isCollapsed = true;
+        localStorage.setItem('sidebarCollapsed', this.isCollapsed);
+      }
     },
     formatTime(isoString) {
       const date = new Date(isoString);
@@ -105,7 +126,16 @@ export default {
       // 处理过渡动画结束事件
       // 可以在这里添加动画完成后的逻辑
     }
-  }
+  },
+  computed: {
+    filteredConversations() {
+      if (!this.searchQuery) return this.conversations;
+      const query = this.searchQuery.toLowerCase();
+      return this.conversations.filter(conv => 
+        conv.title.toLowerCase().includes(query)
+      );
+    }
+  },
 };
 </script>
 
@@ -379,5 +409,268 @@ button:disabled {
 
 .conversation-item.disabled:hover {
   background: var(--card-bg);
+}
+.search-container {
+  padding: 12px;
+}
+
+.search-input {
+  width: 100%;
+  padding: 10px 16px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: var(--card-bg);
+  color: var(--text-color);
+  font-size: 14px;
+  box-sizing: border-box;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 2px rgba(66, 153, 225, 0.2);
+}
+
+/* 移动端遮罩层 */
+.mobile-overlay {
+  display: none;
+}
+
+/* 移动端响应式设计 - 类似Gemini/ChatGPT风格 */
+@media (max-width: 768px) {
+  .mobile-overlay {
+    display: block;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 999;
+    backdrop-filter: blur(4px);
+  }
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 1000;
+    background: var(--bg-color);
+    transform: translateX(-100%);
+    transition: transform 0.3s ease;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .sidebar:not(.collapsed) {
+    transform: translateX(0);
+  }
+
+  .sidebar.collapsed {
+    transform: translateX(-100%);
+    width: 100vw;
+  }
+
+  .sidebar-header {
+    padding: 20px 24px;
+    background: var(--card-bg);
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+
+  .collapse-btn {
+     width: 44px;
+     height: 44px;
+     border-radius: 50%;
+     background: var(--secondary-color);
+     border: none;
+     display: flex;
+     align-items: center;
+     justify-content: center;
+     font-size: 18px;
+     color: var(--text-color);
+     margin-right: 0;
+     order: 2;
+     cursor: pointer;
+   }
+
+   .collapse-icon {
+     transition: transform 0.3s ease;
+   }
+
+   .collapse-icon {
+     font-family: Arial, sans-serif;
+     font-weight: bold;
+     display: inline-block;
+   }
+
+   .collapse-icon.is-open {
+     transform: rotate(90deg);
+   }
+
+  .new-chat-btn {
+    padding: 14px 24px;
+    font-size: 16px;
+    border-radius: 25px;
+    background: var(--primary-color);
+    color: white;
+    border: none;
+    font-weight: 500;
+    flex: 1;
+    margin-right: 16px;
+    order: 1;
+  }
+
+  .search-container {
+    padding: 20px 24px;
+    background: var(--card-bg);
+    border-bottom: 1px solid var(--border-color);
+  }
+
+  .search-input {
+    padding: 16px 20px;
+    font-size: 16px;
+    border-radius: 25px;
+    background: var(--bg-color);
+    border: 1px solid var(--border-color);
+  }
+
+  .conversation-list {
+    padding: 16px 24px;
+    flex: 1;
+    overflow-y: auto;
+  }
+
+  .conversation-item {
+    padding: 20px;
+    margin: 12px 0;
+    border-radius: 16px;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  }
+
+  .conversation-item:hover {
+    transform: none;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  }
+
+  .conv-title {
+    font-size: 16px;
+    font-weight: 500;
+    line-height: 1.4;
+  }
+
+  .conv-meta {
+    font-size: 14px;
+    margin-top: 12px;
+  }
+
+  .delete-btn {
+    font-size: 24px;
+    padding: 8px;
+    border-radius: 50%;
+    background: var(--secondary-color);
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .sidebar-footer {
+    padding: 24px;
+    background: var(--card-bg);
+    border-top: 1px solid var(--border-color);
+    position: sticky;
+    bottom: 0;
+  }
+
+  .sidebar-footer button {
+    padding: 16px 20px;
+    font-size: 16px;
+    border-radius: 12px;
+    margin: 6px 0;
+    background: var(--secondary-color);
+    font-weight: 500;
+  }
+
+  .collapsed-info {
+    display: none;
+  }
+}
+
+/* 小屏幕设备进一步优化 - 保持全屏抽屉式设计 */
+@media (max-width: 480px) {
+  .sidebar-header {
+    padding: 16px 20px;
+  }
+
+  .collapse-btn {
+    width: 40px;
+    height: 40px;
+    font-size: 16px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .new-chat-btn {
+    padding: 12px 20px;
+    font-size: 15px;
+    margin-right: 12px;
+  }
+
+  .search-container {
+    padding: 16px 20px;
+  }
+
+  .search-input {
+    padding: 14px 18px;
+    font-size: 15px;
+  }
+
+  .conversation-list {
+    padding: 12px 20px;
+  }
+
+  .conversation-item {
+    padding: 18px;
+    margin: 10px 0;
+    border-radius: 14px;
+  }
+
+  .conv-title {
+    font-size: 15px;
+  }
+
+  .conv-meta {
+    font-size: 13px;
+    margin-top: 10px;
+  }
+
+  .delete-btn {
+    font-size: 22px;
+    width: 32px;
+    height: 32px;
+    padding: 6px;
+  }
+
+  .sidebar-footer {
+    padding: 20px;
+  }
+
+  .sidebar-footer button {
+    padding: 14px 18px;
+    font-size: 15px;
+    margin: 4px 0;
+  }
 }
 </style>

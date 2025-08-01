@@ -1,19 +1,28 @@
 <template>
   <div class="chat-wrapper">
      <div class="chat-title">
+      <!-- 移动端菜单按钮 -->
+      <button class="mobile-menu-btn" @click="toggleSidebar">
+        <span class="menu-icon">☰</span>
+      </button>
+      
       <span
         class="title-text"
         v-if="!isRenaming"
         @dblclick="startRenaming"
       >{{ currentTitle || "新对话" }}</span>
-      <input
-        v-else
-        ref="titleInput"
-        v-model="newTitle"
-        @keyup.enter="saveTitle"
-        @blur="saveTitle"
-        class="title-input"
-      />
+
+      <div v-else class="title-edit-container">
+        <input
+          ref="titleInput"
+          v-model="newTitle"
+          @keyup.enter="saveTitle"
+          @blur="saveTitle"
+          class="title-input"
+          maxlength="50"
+        />
+
+      </div>
       <button class="theme-toggle-btn" @click.stop="toggleTheme">
         <span class="theme-icon">{{ isDarkMode ? '☀️' : '🌙' }}</span>
       </button>
@@ -112,7 +121,7 @@
             ref="fileInput"
             @change="handleFileChange"
             style="display: none"
-            accept=".doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            accept=".doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.txt,text/plain"
           />
         </div>
         <div class="button-group">
@@ -245,6 +254,7 @@ export default {
       isGenerating: false,
       isDarkMode: false,
       debounceTimer: null,
+      titleClickTimer: null,
       isRenaming: false,
       newTitle: '',
       selectedFile: null,
@@ -421,7 +431,7 @@ export default {
         
         // 验证文件类型
         if (!this.isDocumentFile(file.name)) {
-            alert('仅支持上传文档(.doc, .docx)和表格(.xls, .xlsx)文件');
+            alert('仅支持上传文档(.doc, .docx)、表格(.xls, .xlsx)和文本(.txt)文件');
             event.target.value = '';
             return;
         }
@@ -548,6 +558,13 @@ export default {
                             fullText += data + '\n\n';
                         });
                         resolve(fullText);
+                    } else if (fileName.endsWith('.txt')) {
+                        // 对于txt文件，直接读取为文本
+                        const textReader = new FileReader();
+                        textReader.onload = (event) => resolve(event.target.result);
+                        textReader.onerror = (error) => reject(error);
+                        textReader.readAsText(file, 'UTF-8');
+                        return; // 提前返回，避免执行下面的逻辑
                     } else {
                         const textReader = new FileReader();
                         textReader.onload = (event) => resolve(event.target.result);
@@ -562,7 +579,8 @@ export default {
             if (fileName.endsWith('.docx') || fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
                reader.readAsArrayBuffer(file);
             } else {
-               reader.readAsText(file);
+               // 对于txt文件和其他文本文件，直接读取为文本
+               reader.readAsText(file, 'UTF-8');
             }
         });
     },
@@ -650,10 +668,18 @@ export default {
         this.currentAnswer = '';
         this.currentThinking = '';
     },
+    
     startRenaming() {
+        if (this.titleClickTimer) {
+          clearTimeout(this.titleClickTimer);
+          this.titleClickTimer = null;
+        }
         this.isRenaming = true;
         this.newTitle = this.currentTitle || '';
-        this.$nextTick(() => { this.$refs.titleInput.focus(); this.$refs.titleInput.select(); });
+        this.$nextTick(() => { 
+          this.$refs.titleInput.focus(); 
+          this.$refs.titleInput.select(); 
+        });
       },
     saveTitle() {
         this.isRenaming = false;
@@ -661,6 +687,7 @@ export default {
           this.$emit('update-title', this.newTitle.trim());
         }
       },
+
     toggleTheme() {
         this.isDarkMode = !this.isDarkMode;
         localStorage.setItem('darkMode', this.isDarkMode);
@@ -860,13 +887,14 @@ export default {
     },
     
     isDocumentFile(filename) {
-        const documentExtensions = ['.doc', '.docx', '.xls', '.xlsx'];
+        const documentExtensions = ['.doc', '.docx', '.xls', '.xlsx', '.txt'];
         return documentExtensions.some(ext => filename.toLowerCase().endsWith(ext));
     },
     
     getFileIcon(filename) {
         if (filename.toLowerCase().includes('.doc')) return '📄';
         if (filename.toLowerCase().includes('.xls')) return '📊';
+        if (filename.toLowerCase().includes('.txt')) return '📝';
         return '📎';
     },
     
@@ -920,10 +948,16 @@ export default {
           this.modalPreviewError = null;
       },
       
+      // 移动端侧边栏切换方法
+      toggleSidebar() {
+          this.$emit('toggle-sidebar');
+      },
+      
       getFileTypeDescription(filename) {
           if (!filename) return '未知';
           if (filename.toLowerCase().includes('.doc')) return 'Word文档';
           if (filename.toLowerCase().includes('.xls')) return 'Excel表格';
+          if (filename.toLowerCase().includes('.txt')) return '文本文件';
           return '不支持的文件类型';
       },
       
@@ -1183,38 +1217,115 @@ export default {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  transition: all 0.2s ease;
 }
 .title-text:hover {
   background-color: var(--action-btn-bg);
 }
-.title-input {
-  width: 60%;
-  min-width: 200px;
-  max-width: 400px;
-  padding: 4px 8px;
+
+.rename-btn {
+  position: absolute;
+  left: 20px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  background: var(--action-btn-bg);
   border: 1px solid var(--border-color);
-  border-radius: 4px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  opacity: 0.7;
+}
+
+.rename-btn:hover {
+  opacity: 1;
+  background: var(--primary-color);
+  border-color: var(--primary-color);
+  transform: translateY(-50%) scale(1.05);
+  box-shadow: 0 2px 8px rgba(66, 153, 225, 0.3);
+}
+
+.rename-btn svg {
+  stroke: var(--text-color);
+  transition: stroke 0.2s ease;
+}
+
+.rename-btn:hover svg {
+  stroke: white;
+}
+
+.title-edit-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 50%;
+  max-width: 400px;
+  min-width: 250px;
+}
+
+.title-input {
+  flex: 1;
+  min-width: 150px;
+  padding: 6px 12px;
+  border: 2px solid var(--primary-color);
+  border-radius: 6px;
   background: var(--input-bg);
   color: var(--text-color);
-  font-size: 1.25rem;
+  font-size: 1.1rem;
   font-weight: 600;
   text-align: center;
-  margin: 0 auto;
+  transition: all 0.2s ease;
 }
+
 .title-input:focus {
   outline: none;
   border-color: var(--primary-color);
-  box-shadow: 0 0 0 2px rgba(66, 153, 225, 0.2);
+  box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.2);
+  background: var(--card-bg);
 }
+
+
 .theme-toggle-btn {
   position: absolute;
   right: 20px;
   top: 50%;
   transform: translateY(-50%);
+  width: 32px;
+  height: 32px;
+  padding: 6px;
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  opacity: 1;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 .theme-toggle-btn:hover {
   transform: translateY(-50%) scale(1.1);
   box-shadow: 0 2px 8px rgba(66, 153, 225, 0.3);
+  opacity: 1;
+  background: var(--primary-color);
+  border-color: var(--primary-color);
+}
+.theme-toggle-btn .theme-icon {
+  color: var(--text-color);
+  transition: color 0.2s ease;
+}
+.theme-toggle-btn:hover .theme-icon {
+  color: white;
 }
 
 .chat-wrapper {
@@ -2150,7 +2261,12 @@ button[disabled]:hover {
   font-weight: 600;
 }
 
-/* 响应式设计 */
+/* 移动端菜单按钮 - 默认隐藏 */
+.mobile-menu-btn {
+  display: none;
+}
+
+/* 移动端响应式设计 */
 @media (max-width: 768px) {
   .preview-modal {
     max-width: 95vw;
@@ -2160,6 +2276,485 @@ button[disabled]:hover {
   
   .preview-modal-header h3 {
     max-width: 250px;
+  }
+
+  /* 移动端适配 - 优化布局 */
+  .chat-container {
+    width: 96%;
+    margin: 15px auto;
+    border-radius: 16px;
+  }
+
+  .chat-title {
+    padding: 16px 20px;
+    font-size: 1.2rem;
+    border-radius: 16px 16px 0 0;
+    justify-content: center;
+    gap: 12px;
+    display: flex;
+    align-items: center;
+    position: relative;
+  }
+
+  .title-text {
+    flex: 1;
+    text-align: center;
+    font-size: 1.1rem;
+    margin: 0 8px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 36px;
+  }
+
+  .rename-btn {
+    left: 18px;
+    width: 40px;
+    height: 40px;
+  }
+
+  .title-edit-container {
+    width: 50%;
+    max-width: 320px;
+    min-width: 220px;
+  }
+
+  .title-input {
+    min-width: 140px;
+    font-size: 1.1rem;
+    padding: 10px 16px;
+  }
+
+  .theme-toggle-btn {
+    position: static;
+    width: 40px;
+    height: 40px;
+    padding: 8px;
+    margin: 0;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    line-height: 1;
+  }
+
+  .chat-messages {
+    padding: 24px 20px;
+  }
+
+  .message {
+    max-width: 88%;
+    padding: 20px 22px;
+    margin-bottom: 24px;
+    border-radius: 16px;
+    font-size: 15px;
+  }
+
+  .plain-content,
+  .thinking-text {
+    font-size: 15px;
+    line-height: 1.7;
+  }
+
+  .thinking-content {
+    padding: 20px;
+    margin-bottom: 20px;
+  }
+
+  .thinking-header {
+    font-size: 14px;
+  }
+
+  .input-area {
+    padding: 16px;
+    border-radius: 0 0 16px 16px;
+  }
+
+  .input-area.centered {
+    width: 94%;
+    max-width: none;
+    padding: 28px;
+    top: 45%;
+    border-radius: 20px;
+  }
+
+  .input-area.centered .top-controls {
+    flex-direction: column;
+    gap: 16px;
+    align-items: stretch;
+  }
+
+  .input-area.centered .button-group {
+    justify-content: center;
+    gap: 16px;
+  }
+
+  .input-controls {
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .top-controls {
+    flex-direction: column;
+    gap: 16px;
+    align-items: stretch;
+  }
+
+  .model-selector {
+    min-width: auto;
+    width: 100%;
+  }
+
+  .model-selector label {
+    font-size: 13px;
+  }
+
+  .model-selector select {
+    width: 100%;
+    padding: 12px 16px;
+    font-size: 15px;
+  }
+
+  input {
+    padding: 16px 20px;
+    font-size: 16px;
+    border-radius: 12px;
+  }
+
+  .button-group {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    gap: 12px;
+    justify-items: center;
+    align-items: center;
+  }
+
+  button {
+    padding: 14px 20px;
+    font-size: 15px;
+    border-radius: 10px;
+    min-width: 80px;
+    width: 100%;
+    max-width: 120px;
+  }
+
+  .action-btn {
+    width: 36px;
+    height: 36px;
+  }
+
+  .action-btn svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  .message-actions {
+    opacity: 1;
+    margin-top: 16px;
+  }
+
+  .file-preview {
+    margin-bottom: 16px;
+  }
+
+  .file-preview-header {
+    padding: 14px;
+  }
+
+  .file-info {
+    padding: 16px;
+  }
+
+  .file-info p {
+    font-size: 14px;
+  }
+
+  .preview-btn {
+    padding: 10px 20px;
+    font-size: 14px;
+  }
+
+  .speech-error-indicator {
+    padding: 8px 20px 0;
+    font-size: 14px;
+  }
+
+  .listening-indicator {
+    padding: 8px 20px 0;
+  }
+
+  .mobile-menu-btn {
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    min-width: 36px;
+    min-height: 36px;
+    padding: 0;
+    margin: 0;
+    flex-shrink: 0;
+    font-size: 16px;
+    font-weight: bold;
+    line-height: 1;
+    background: var(--primary-color);
+    border: 1px solid var(--primary-color);
+    border-radius: 50%;
+    color: white;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-sizing: border-box;
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+  }
+
+  .mobile-menu-btn:hover {
+    background: var(--secondary-color);
+    border-color: var(--secondary-color);
+    transform: translateY(-50%) scale(1.05);
+  }
+
+  .mobile-menu-btn .menu-icon {
+    line-height: 1;
+  }
+
+  .theme-toggle-btn {
+    position: absolute !important;
+    right: 12px !important;
+    top: 50% !important;
+    transform: translateY(-50%) !important;
+    width: 36px;
+    height: 36px;
+    min-width: 36px;
+    min-height: 36px;
+    padding: 0;
+    margin: 0;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    line-height: 1;
+    background: var(--primary-color);
+    border: 1px solid var(--primary-color);
+    border-radius: 50%;
+    color: white;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    opacity: 1 !important;
+    box-sizing: border-box;
+  }
+
+  .theme-toggle-btn:hover {
+    background: var(--secondary-color);
+    border-color: var(--secondary-color);
+    transform: translateY(-50%) scale(1.05) !important;
+  }
+
+  .theme-toggle-btn .theme-icon {
+    line-height: 1;
+    display: block;
+  }
+
+  /* 代码块移动端优化 */
+  :deep(.code-block-container) {
+    margin: 2em 0;
+    border-radius: 16px;
+  }
+
+  :deep(.code-block-header) {
+    padding: 14px 20px;
+    font-size: 0.85em;
+  }
+
+  :deep(.copy-code-btn) {
+    padding: 6px 12px;
+    font-size: 0.8em;
+  }
+
+  :deep(pre) {
+    font-size: 14px !important;
+    padding: 20px !important;
+    overflow-x: auto;
+  }
+
+  :deep(code) {
+    font-size: 14px !important;
+  }
+}
+
+/* 小屏幕设备进一步优化 */
+@media (max-width: 480px) {
+  .chat-container {
+    width: 98%;
+    margin: 10px auto;
+  }
+
+  .chat-title {
+    padding: 16px 50px 16px 20px;
+    font-size: 1.1rem;
+  }
+
+  .title-text {
+    max-width: 50%;
+    font-size: 1.1rem;
+  }
+
+  .rename-btn {
+    left: 16px;
+    width: 36px;
+    height: 36px;
+  }
+
+  .title-edit-container {
+    width: 45%;
+    max-width: 260px;
+    min-width: 200px;
+  }
+
+  .title-input {
+    min-width: 120px;
+    font-size: 1rem;
+    padding: 8px 14px;
+  }
+
+  .mobile-menu-btn {
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    min-width: 36px;
+    min-height: 36px;
+    padding: 0;
+    margin: 0;
+    flex-shrink: 0;
+    font-size: 16px;
+    font-weight: bold;
+    line-height: 1;
+    background: var(--primary-color);
+    border: 1px solid var(--primary-color);
+    border-radius: 50%;
+    color: white;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-sizing: border-box;
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+  }
+
+  .mobile-menu-btn:hover {
+    background: var(--secondary-color);
+    border-color: var(--secondary-color);
+    transform: translateY(-50%) scale(1.05);
+  }
+
+  .theme-toggle-btn {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 36px;
+    height: 36px;
+    min-width: 36px;
+    min-height: 36px;
+    padding: 0;
+    margin: 0;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    line-height: 1;
+    background: var(--primary-color);
+    border: 1px solid var(--primary-color);
+    border-radius: 50%;
+    color: white;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-sizing: border-box;
+  }
+
+  .theme-toggle-btn:hover {
+    background: var(--secondary-color);
+    border-color: var(--secondary-color);
+    transform: translateY(-50%) scale(1.05);
+  }
+
+  .chat-messages {
+    padding: 20px 16px;
+  }
+
+  .message {
+    max-width: 92%;
+    padding: 18px 20px;
+    margin-bottom: 20px;
+    font-size: 14px;
+  }
+
+  .plain-content,
+  .thinking-text {
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+  .thinking-content {
+    padding: 18px;
+  }
+
+  .input-area {
+    padding: 14px;
+  }
+
+  .input-area.centered {
+    width: 96%;
+    padding: 24px;
+    top: 40%;
+    border-radius: 18px;
+  }
+
+  input {
+    padding: 14px 18px;
+    font-size: 16px;
+  }
+
+  button {
+    padding: 12px 20px;
+    font-size: 14px;
+    min-width: 80px;
+  }
+
+  .model-selector select {
+    padding: 10px 14px;
+    font-size: 14px;
+  }
+
+  .action-btn {
+    width: 32px;
+    height: 32px;
+  }
+
+  .action-btn svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  :deep(pre) {
+    font-size: 13px !important;
+    padding: 16px !important;
+  }
+
+  :deep(code) {
+    font-size: 13px !important;
   }
 }
 </style>

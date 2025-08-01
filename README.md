@@ -28,8 +28,10 @@
 - **附件管理**: 消息中显示文件附件信息
 
 ### 🎨 用户体验
-- **深色/浅色主题**: 支持主题切换
-- **响应式设计**: 适配不同屏幕尺寸
+- **深色/浅色主题**: 支持主题切换，优化按钮可见性
+- **响应式设计**: 适配不同屏幕尺寸，移动端优化
+- **智能侧边栏**: PC端折叠按钮图标显示，移动端自动关闭
+- **移动端优化**: 按钮对称布局，触摸友好的交互设计
 - **流式输出**: 实时显示AI回复
 - **语法高亮**: 代码块语法高亮显示
 - **数学公式**: 支持 LaTeX 数学公式渲染
@@ -166,50 +168,9 @@ chat/
 - 导出功能
 - 批量操作
 
-## 🔧 自定义配置
 
-### 添加新的AI模型
-1. 在 `src/api/chat.js` 中添加新模型的API调用函数
-2. 在 `ChatContainer.vue` 中的模型选择器添加新选项
-3. 更新 `chatWithAI` 函数以支持新模型
 
-### 自定义主题
-1. 在CSS中定义新的主题变量
-2. 更新 `ChatContainer.vue` 中的主题切换逻辑
-3. 添加主题选择器（如需要）
 
-### 扩展文件支持
-1. 在 `ChatContainer.vue` 中添加新的文件类型处理
-2. 安装相应的文件解析库
-3. 更新文件预览功能
 
-## 🐛 常见问题
 
-### API密钥配置
-确保在 `src/api/chat.js` 中正确配置了API密钥，否则AI模型将无法正常工作。
-
-### 跨域问题
-如果遇到跨域问题，可以在 `vue.config.js` 中配置代理：
-```javascript
-module.exports = {
-  devServer: {
-    proxy: {
-      '/api': {
-        target: 'https://api.deepseek.com',
-        changeOrigin: true,
-        pathRewrite: {
-          '^/api': ''
-        }
-      }
-    }
-  }
-}
-```
-
-### 本地存储清理
-如果遇到数据问题，可以清理浏览器的localStorage：
-```javascript
-localStorage.removeItem('conversations');
-localStorage.removeItem('darkMode');
-```
 

@@ -2,6 +2,7 @@
   <div id="app" :class="{'dark-mode': isDarkMode}">
     <div class="app-container">
       <Sidebar
+        ref="sidebar"
         :conversations="sortedConversations"
         :currentConversationIndex="currentConversationIndex"
         :isGenerating="$refs.chatContainer?.isGenerating || false"
@@ -25,6 +26,7 @@
           @theme-changed="handleThemeChange"
           @update-title-stream="handleUpdateTitleStream"
           @update-title="handleUpdateTitle"
+          @toggle-sidebar="toggleSidebar"
           ref="chatContainer"
         />
       </div>
@@ -208,6 +210,11 @@ export default {
     },
     updateModel(model) {
       this.conversations[this.currentConversationIndex].model = model;
+    },
+    toggleSidebar() {
+      if (this.$refs.sidebar) {
+        this.$refs.sidebar.toggleCollapse();
+      }
     }
   }
 };
@@ -299,9 +306,9 @@ export default {
   --gradient-secondary: linear-gradient(135deg, #1f2937 0%, #374151 100%);
 }
 
-/* 隐藏HTML外侧滚动条 */
+/* 允许HTML页面滚动 */
 html, body {
-  overflow: hidden;
+  overflow: auto;
   margin: 0;
   padding: 0;
   height: 100%;
