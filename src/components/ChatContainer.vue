@@ -6,6 +6,34 @@
         <span class="menu-icon">☰</span>
       </button>
       
+      <!-- 模型选择器 -->
+      <div class="title-model-selector" @click="toggleModelDropdown" :class="{ 'open': showModelDropdown }">
+        <div class="current-model">
+          <div class="model-icon">{{ getModelIcon(selectedModel) }}</div>
+          <div class="model-info">
+            <div class="model-name">{{ getModelName(selectedModel) }}</div>
+          </div>
+          <div class="dropdown-arrow">{{ showModelDropdown ? '▲' : '▼' }}</div>
+        </div>
+        
+        <div v-if="showModelDropdown" class="model-dropdown">
+          <div 
+            v-for="model in availableModels" 
+            :key="model.value"
+            class="model-option"
+            :class="{ 'selected': selectedModel === model.value }"
+            @click.stop="selectModel(model.value)"
+          >
+            <div class="model-icon">{{ model.icon }}</div>
+            <div class="model-details">
+              <div class="model-name">{{ model.name }}</div>
+              <div class="model-description">{{ model.description }}</div>
+            </div>
+            <div v-if="selectedModel === model.value" class="check-icon">✓</div>
+          </div>
+        </div>
+      </div>
+      
       <span
         class="title-text"
         v-if="!isRenaming"
@@ -55,7 +83,7 @@
               <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
             </svg>
           </button>
-          <button class="action-btn" @click="regenerateContent" title="重新生成">
+          <button v-if="isLastAssistantMessage(index)" class="action-btn" @click="regenerateContent" title="重新生成">
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path>
               <path d="M21 3v5h-5"></path>
@@ -81,7 +109,13 @@
       </div>
     </div>
 
-    <div class="input-area" :class="{ 'centered': messages.length === 0 }">
+    <div class="input-area" :class="{ 'centered': messages.length === 0, 'collapsed': isInputCollapsed }">
+      <!-- 移动端折叠按钮 -->
+      <button class="input-collapse-btn" @click="toggleInputCollapse" v-if="isMobile && messages.length > 0">
+        <span class="collapse-icon">{{ isInputCollapsed ? '▲' : '▼' }}</span>
+      </button>
+      
+      <div class="input-content" v-show="!isInputCollapsed || !isMobile">
       <div v-if="selectedFile" class="file-preview">
         <div class="file-preview-header">
           <span class="file-icon">{{ getFileIcon(selectedFile.name) }}</span>
@@ -102,14 +136,6 @@
 
       <div class="input-controls">
         <div class="top-controls">
-          <div class="model-selector">
-            <label>模型选择：</label>
-            <select v-model="selectedModel" @change="changeModel">
-              <option value="deepseek-chat">DeepSeek-V3-0324</option>
-              <option value="deepseek-reasoner">DeepSeek-R1-0528</option>
-              <option value="glm-4-flash">GLM-4-Flash</option>
-            </select>
-          </div>
           <input
             v-model="userInput"
             @keyup.enter="handleSend"
@@ -125,29 +151,37 @@
           />
         </div>
         <div class="button-group">
-        <button @click="triggerFileUpload" :disabled="isGenerating" title="上传文件">
+        <button 
+          class="action-btn"
+          @click="triggerFileUpload" 
+          :disabled="isGenerating" 
+          title="上传文件">
           📎
         </button>
         <button
+          class="action-btn"
           @click="toggleVoiceInput"
-          :class="{ active: isSpeechRecognizing,disabled: isGenerating}"
+          :class="{ active: isSpeechRecognizing, disabled: isGenerating }"
           :disabled="!isSpeechSupported || isGenerating"
           title="语音输入"
         >
           🎤
         </button>
         <button
+          class="action-btn"
           @click="isGenerating ? stopGeneration() : handleSend()"
           :class="{ 'stop-btn': isGenerating }">
           {{ isGenerating ? '停止' : '发送' }}
         </button>
         <button
-        @click="$emit('clear-chat')"
-        :disabled="isGenerating"
+          class="action-btn"
+          @click="$emit('clear-chat')"
+          :disabled="isGenerating"
         >
           清空
         </button>
         </div>
+      </div>
       </div>
     </div>
 
@@ -268,8 +302,35 @@ export default {
       modalPreviewError: null,
       showHtmlPreviewModal: false,
       htmlPreviewContent: '',
+      showModelDropdown: false,
+      isInputCollapsed: false,
+      availableModels: [
+        {
+          value: 'deepseek-chat',
+          name: 'DeepSeek-V3',
+          description: '强大的通用对话模型，擅长推理和创作',
+          icon: '🧠'
+        },
+        {
+          value: 'deepseek-reasoner',
+          name: 'DeepSeek-R1',
+          description: '专业推理模型，具备强大的逻辑思维能力',
+          icon: '🔍'
+        },
+        {
+          value: 'glm-4-flash',
+          name: 'GLM-4-Flash',
+          description: '快速响应模型，适合日常对话和简单任务',
+          icon: '⚡'
+        }
+      ]
 
     };
+  },
+  computed: {
+    isMobile() {
+      return window.innerWidth <= 768;
+    }
   },
   watch: {
     messages() {
@@ -287,8 +348,13 @@ export default {
     const savedTheme = localStorage.getItem('darkMode');
     this.isDarkMode = savedTheme !== null ? JSON.parse(savedTheme) : true;
   },
+  beforeDestroy() {
+    document.removeEventListener('click', this.handleClickOutside);
+  },
   mounted() {
     this.initSpeechRecognition();
+    // 添加点击外部关闭下拉框的事件监听
+    document.addEventListener('click', this.handleClickOutside);
     marked.setOptions({
       breaks: true,
       gfm: true,
@@ -312,6 +378,14 @@ export default {
     document.documentElement.classList.toggle('dark-mode', this.isDarkMode);
   },
   methods: {
+    isLastAssistantMessage(index) {
+      // 找到最后一条助手消息的索引
+      const lastAssistantIndex = this.messages.map(m => m.role).lastIndexOf('assistant');
+      return index === lastAssistantIndex;
+    },
+    toggleInputCollapse() {
+      this.isInputCollapsed = !this.isInputCollapsed;
+    },
     renderMarkdown(content) {
         if (!content) return '';
         try {
@@ -384,15 +458,33 @@ export default {
           e.stopPropagation();
           const codeBlock = copyBtn.closest('.code-block-container').querySelector('code');
           const code = codeBlock.textContent;
-          navigator.clipboard.writeText(code).then(() => {
-            const originalHTML = copyBtn.innerHTML;
+          const originalHTML = copyBtn.innerHTML;
+          
+          const onSuccess = () => {
             copyBtn.innerHTML = '✓ 已复制';
-              setTimeout(() => {
-               copyBtn.innerHTML = originalHTML;
-             }, 2000);
-          }).catch((err) => {
+            setTimeout(() => {
+              copyBtn.innerHTML = originalHTML;
+            }, 2000);
+          };
+          
+          const onError = (err) => {
             console.error('复制失败:', err);
-          });
+            copyBtn.innerHTML = '✗ 复制失败';
+            setTimeout(() => {
+              copyBtn.innerHTML = originalHTML;
+            }, 2000);
+          };
+          
+          // 尝试使用现代 Clipboard API
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(code).then(onSuccess).catch((error) => {
+              // 如果 Clipboard API 失败，尝试使用传统方法
+              this.fallbackCopyTextToClipboard(code, onSuccess, onError);
+            });
+          } else {
+            // 如果不支持 Clipboard API，直接使用传统方法
+            this.fallbackCopyTextToClipboard(code, onSuccess, onError);
+          }
         }
         
         if (previewBtn) {
@@ -459,6 +551,7 @@ export default {
         if (!userText && !file) return;
 
         this.isGenerating = true;
+        this.$emit('generating-changed', true);
         this.isStreaming = true;
         this.currentThinking = '';
         this.currentAnswer = '';
@@ -523,6 +616,7 @@ export default {
             }
         } finally {
             this.isGenerating = false;
+            this.$emit('generating-changed', false);
             this.isStreaming = false;
         }
     },
@@ -589,6 +683,7 @@ export default {
         const lastUserMessage = this.messages.filter(m => m.role === 'user').pop();
         if (lastUserMessage) {
             this.isGenerating = true;
+            this.$emit('generating-changed', true);
             this.isStreaming = true;
             this.currentThinking = '';
             this.currentAnswer = '';
@@ -626,6 +721,7 @@ export default {
                 }
             } finally {
                 this.isGenerating = false;
+                this.$emit('generating-changed', false);
                 this.isStreaming = false;
             }
         }
@@ -697,6 +793,7 @@ export default {
     stopGeneration() {
         cancelAllRequests();
         this.isGenerating = false;
+        this.$emit('generating-changed', false);
         this.isStreaming = false;
         const lastMessage = this.messages[this.messages.length - 1];
         if (lastMessage && lastMessage.role === 'assistant' && lastMessage.isStreaming) {
@@ -729,7 +826,10 @@ export default {
         feedbackEl.style.top = '20px';
         feedbackEl.style.right = '20px';
       }
-      navigator.clipboard.writeText(content).then(() => {
+      
+      // 复制成功的处理函数
+      const onSuccess = () => {
+        feedbackEl.textContent = '✓ 已复制';
         feedbackEl.classList.add('show', 'success');
         if (triggerBtn) {
           triggerBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-width="2" d="M20 6L9 17l-5-5"/></svg>`;
@@ -743,8 +843,10 @@ export default {
             triggerBtn.classList.remove('copied');
           }
         }, 2000);
-
-      }).catch((error) => {
+      };
+      
+      // 复制失败的处理函数
+      const onError = (error) => {
         console.error('内容复制失败:', error);
         feedbackEl.textContent = '✗ 复制失败';
         feedbackEl.classList.add('show', 'error');
@@ -760,7 +862,53 @@ export default {
             triggerBtn.classList.remove('error');
           }
         }, 2000);
-      });
+      };
+      
+      // 尝试使用现代 Clipboard API
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(content).then(onSuccess).catch((error) => {
+          // 如果 Clipboard API 失败，尝试使用传统方法
+          this.fallbackCopyTextToClipboard(content, onSuccess, onError);
+        });
+      } else {
+        // 如果不支持 Clipboard API，直接使用传统方法
+        this.fallbackCopyTextToClipboard(content, onSuccess, onError);
+      }
+    },
+    
+    // 传统的复制方法（兼容性更好）
+    fallbackCopyTextToClipboard(text, onSuccess, onError) {
+      const textArea = document.createElement('textarea');
+      textArea.value = text;
+      
+      // 避免在页面上显示
+      textArea.style.position = 'fixed';
+      textArea.style.top = '0';
+      textArea.style.left = '0';
+      textArea.style.width = '2em';
+      textArea.style.height = '2em';
+      textArea.style.padding = '0';
+      textArea.style.border = 'none';
+      textArea.style.outline = 'none';
+      textArea.style.boxShadow = 'none';
+      textArea.style.background = 'transparent';
+      
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
+      
+      try {
+        const successful = document.execCommand('copy');
+        if (successful) {
+          onSuccess();
+        } else {
+          onError(new Error('execCommand copy failed'));
+        }
+      } catch (err) {
+        onError(err);
+      }
+      
+      document.body.removeChild(textArea);
     },
     initSpeechRecognition() {
       if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
@@ -846,6 +994,32 @@ export default {
     },
     changeModel() {
         this.$emit('model-changed', this.selectedModel);
+    },
+    toggleModelDropdown() {
+        this.showModelDropdown = !this.showModelDropdown;
+    },
+    selectModel(modelValue) {
+        this.selectedModel = modelValue;
+        this.showModelDropdown = false;
+        this.changeModel();
+    },
+    getModelIcon(modelValue) {
+        const model = this.availableModels.find(m => m.value === modelValue);
+        return model ? model.icon : '🤖';
+    },
+    getModelName(modelValue) {
+        const model = this.availableModels.find(m => m.value === modelValue);
+        return model ? model.name : 'Unknown Model';
+    },
+    getModelDescription(modelValue) {
+        const model = this.availableModels.find(m => m.value === modelValue);
+        return model ? model.description : '未知模型';
+    },
+    handleClickOutside(event) {
+        const modelSelector = this.$el.querySelector('.title-model-selector');
+        if (modelSelector && !modelSelector.contains(event.target)) {
+            this.showModelDropdown = false;
+        }
     },
     toggleThinking(index) {
         this.expandedThinking = { ...this.expandedThinking, [index]: !this.isThinkingExpanded(index) };
@@ -1130,16 +1304,17 @@ export default {
 .input-area.centered .input-controls {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 20px;
   align-items: stretch;
 }
 
 .input-area.centered .top-controls {
   display: flex;
-  gap: 16px;
+  gap: 20px;
   align-items: center;
   justify-content: center;
   flex-wrap: wrap;
+  margin-bottom: 8px;
 }
 
 .top-controls {
@@ -1154,25 +1329,57 @@ export default {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 90%;
-  max-width: 800px;
-  border-radius: 16px;
-  border: 1px solid var(--border-color);
-  box-shadow: var(--shadow-lg);
+  width: 95%;
+  max-width: 900px;
+  border-radius: 24px;
+  border: none;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.08);
   z-index: 20;
   flex-direction: column;
-  gap: 16px;
-  padding: 24px;
+  gap: 24px;
+  padding: 32px;
+  background: var(--card-bg);
+  backdrop-filter: blur(20px);
 }
 
 .input-area.centered .model-selector {
   align-self: center;
+  background: var(--secondary-color);
+  padding: 12px 20px;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.input-area.centered .model-selector select {
+  padding: 12px 16px;
+  font-size: 15px;
+  font-weight: 600;
+  border-radius: 8px;
+  border: none;
+  background: var(--input-bg);
+  min-width: 180px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+}
+
+.input-area.centered .model-selector label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-color);
+  margin-right: 12px;
 }
 
 .input-area.centered input {
-  text-align: center;
+  text-align: left;
   font-size: 16px;
-  padding: 14px 20px;
+  padding: 18px 24px;
+  border-radius: 16px;
+  border: 2px solid var(--border-color);
+  background: var(--input-bg);
+  min-height: 56px;
+  resize: none;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 }
 
 .button-group {
@@ -1184,8 +1391,9 @@ export default {
 .input-area.centered .button-group {
   display: flex;
   justify-content: center;
-  gap: 20px;
+  gap: 12px;
   flex-wrap: wrap;
+  margin-top: 8px;
 }
 .model-selector {
   flex-shrink: 0;
@@ -1209,7 +1417,7 @@ export default {
 }
 .title-text {
   display: inline-block;
-  max-width: 60%;
+  max-width: 15ch; /* 限制为15个字符宽度 */
   margin: 0 auto;
   padding: 4px 8px;
   border-radius: 4px;
@@ -1351,6 +1559,153 @@ export default {
   border-radius: 16px 16px 0 0;
   z-index: 10;
   box-shadow: var(--shadow-sm);
+}
+
+.title-model-selector {
+  position: absolute;
+  left: 70px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 1000;
+}
+
+.current-model {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--card-bg);
+  padding: 8px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  backdrop-filter: blur(10px);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 160px;
+}
+
+.current-model:hover {
+  border-color: var(--primary-color);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  transform: translateY(-1px);
+}
+
+.model-icon {
+  font-size: 16px;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.model-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.model-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-color);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin: 0;
+  line-height: 1.2;
+}
+
+.dropdown-arrow {
+  font-size: 12px;
+  color: var(--text-color);
+  opacity: 0.6;
+  transition: transform 0.2s ease;
+}
+
+.title-model-selector.open .dropdown-arrow {
+  transform: rotate(180deg);
+}
+
+.model-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  backdrop-filter: blur(20px);
+  margin-top: 4px;
+  overflow: hidden;
+  z-index: 1001;
+  opacity: 0;
+  transform: translateY(-8px);
+  transition: all 0.2s ease;
+  pointer-events: none;
+}
+
+.title-model-selector.open .model-dropdown {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.model-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 16px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.model-option:last-child {
+  border-bottom: none;
+}
+
+.model-option:hover {
+  background: var(--secondary-color);
+}
+
+.model-option.selected {
+  background: rgba(66, 153, 225, 0.1);
+  border-left: 3px solid var(--primary-color);
+}
+
+.model-option .model-icon {
+  margin-top: 2px;
+}
+
+.model-details {
+  flex: 1;
+  min-width: 0;
+}
+
+.model-details .model-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-color);
+  margin-bottom: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.model-description {
+  font-size: 11px;
+  color: var(--text-color);
+  opacity: 0.7;
+  line-height: 1.4;
+  margin: 0;
+}
+
+.check-icon {
+  color: var(--primary-color);
+  font-weight: bold;
+  font-size: 14px;
+  margin-left: 8px;
 }
 .chat-container {
   width: 85%;
@@ -1525,6 +1880,43 @@ button {
   transition: all 0.3s ease;
   transform: translateY(0);
 }
+
+/* 新对话界面按钮样式 */
+.input-area.centered button {
+  padding: 14px 24px;
+  font-size: 15px;
+  font-weight: 600;
+  border-radius: 12px;
+  min-height: 48px;
+  min-width: 100px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  transition: all 0.2s ease;
+}
+
+.input-area.centered button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(66, 153, 225, 0.25);
+}
+
+/* 发送按钮特殊样式 */
+.input-area.centered button:last-child {
+  background: linear-gradient(135deg, var(--primary-color) 0%, #0284c7 100%);
+  color: white;
+  font-weight: 700;
+}
+
+/* 功能按钮样式 */
+.input-area.centered button:not(:last-child) {
+  background: var(--primary-color);
+  color: white;
+  border: 1px solid var(--primary-color);
+}
+
+.input-area.centered button:not(:last-child):hover {
+  background: var(--primary-hover);
+  color: white;
+  border-color: var(--primary-hover);
+}
 button:hover {
   transform: translateY(-1px);
   box-shadow: 0 2px 8px rgba(66, 153, 225, 0.3);
@@ -1593,7 +1985,8 @@ button.active {
 .message:hover .message-actions {
   opacity: 1;
 }
-.action-btn {
+/* 消息框中的action-btn样式 */
+.message-actions .action-btn {
   width: 28px;
   height: 28px;
   padding: 0;
@@ -1607,15 +2000,36 @@ button.active {
   transition: all 0.2s ease;
   transform: scale(1);
 }
-.action-btn:hover {
+.message-actions .action-btn:hover {
   background: var(--primary-color);
   transform: scale(1.1);
   box-shadow: 0 2px 8px rgba(66, 153, 225, 0.3);
 }
-.action-btn svg {
+.message-actions .action-btn svg {
   width: 14px;
   height: 14px;
   stroke: var(--text-color);
+}
+/* 输入区域的action-btn样式 */
+.input-area .action-btn {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--primary-color);
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  transform: scale(1);
+  color: white;
+}
+.input-area .action-btn:hover {
+  background: var(--primary-hover);
+  transform: scale(1.1);
+  box-shadow: 0 2px 8px rgba(66, 153, 225, 0.3);
 }
 .stop-btn {
   background: linear-gradient(135deg, #e53e3e 0%, #c53030 100%) !important;
@@ -2290,24 +2704,63 @@ button[disabled]:hover {
     font-size: 1.2rem;
     border-radius: 16px 16px 0 0;
     justify-content: center;
-    gap: 12px;
+    gap: 20px;
     display: flex;
     align-items: center;
     position: relative;
+    min-height: 56px;
+  }
+
+  .title-model-selector {
+    position: static;
+    left: auto;
+    top: auto;
+    transform: none;
+    z-index: 1000;
+  }
+
+  .current-model {
+    background: var(--secondary-color);
+    padding: 6px 10px;
+    border-radius: 8px;
+    min-width: 120px;
+  }
+
+  .model-name {
+    font-size: 11px;
+  }
+
+  .model-icon {
+    font-size: 14px;
+    width: 16px;
+    height: 16px;
+  }
+
+  .dropdown-arrow {
+    font-size: 10px;
+  }
+
+  .model-dropdown {
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+    z-index: 1002;
+  }
+
+  .model-option {
+    padding: 10px 12px;
+    gap: 8px;
+  }
+
+  .model-details .model-name {
+    font-size: 12px;
+  }
+
+  .model-description {
+    font-size: 10px;
   }
 
   .title-text {
-    flex: 1;
-    text-align: center;
-    font-size: 1.1rem;
-    margin: 0 8px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 36px;
+    display: none;
   }
 
   .rename-btn {
@@ -2317,22 +2770,35 @@ button[disabled]:hover {
   }
 
   .title-edit-container {
-    width: 50%;
+    position: static;
+    transform: none;
+    width: 60%;
     max-width: 320px;
     min-width: 220px;
+    left: auto;
+    top: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto;
   }
 
   .title-input {
     min-width: 140px;
     font-size: 1.1rem;
     padding: 10px 16px;
+    text-align: center;
+    border-radius: 8px;
   }
 
   .theme-toggle-btn {
-    position: static;
-    width: 40px;
-    height: 40px;
-    padding: 8px;
+    position: absolute;
+    right: 20px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 44px;
+    height: 44px;
+    padding: 10px;
     margin: 0;
     flex-shrink: 0;
     display: flex;
@@ -2340,6 +2806,7 @@ button[disabled]:hover {
     justify-content: center;
     font-size: 18px;
     line-height: 1;
+    border-radius: 8px;
   }
 
   .chat-messages {
@@ -2372,25 +2839,120 @@ button[disabled]:hover {
   .input-area {
     padding: 16px;
     border-radius: 0 0 16px 16px;
+    position: relative;
+  }
+
+  /* 输入区域折叠按钮 */
+  .input-collapse-btn {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    display: none; /* 默认在PC端隐藏 */
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    min-width: 32px;
+    min-height: 32px;
+    max-width: 32px;
+    max-height: 32px;
+    padding: 0;
+    margin: 0;
+    background: var(--secondary-color);
+    border: 1px solid var(--border-color);
+    border-radius: 50%;
+    color: var(--text-color);
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    z-index: 10;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    box-sizing: border-box;
+    flex-shrink: 0;
+  }
+
+  .input-collapse-btn:hover {
+    background: var(--primary-color);
+    color: white;
+    border-color: var(--primary-color);
+    transform: scale(1.1);
+  }
+
+  .collapse-icon {
+    font-size: 12px;
+    transition: transform 0.2s ease;
+  }
+
+  /* 折叠状态样式 */
+  .input-area.collapsed {
+    padding: 0;
+    padding-top: 48px;
+  }
+
+  .input-area.collapsed .input-collapse-btn {
+    top: 8px;
+    left: 8px;
+  }
+
+  .input-content {
+    padding: 16px;
+    padding-top: 0;
   }
 
   .input-area.centered {
     width: 94%;
     max-width: none;
-    padding: 28px;
+    padding: 24px;
     top: 45%;
     border-radius: 20px;
+    gap: 20px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15), 0 2px 8px rgba(0, 0, 0, 0.1);
+    backdrop-filter: blur(20px);
   }
 
   .input-area.centered .top-controls {
     flex-direction: column;
     gap: 16px;
     align-items: stretch;
+    margin-bottom: 6px;
   }
 
   .input-area.centered .button-group {
     justify-content: center;
-    gap: 16px;
+    gap: 12px;
+    margin-top: 6px;
+  }
+
+  .input-area.centered input {
+    padding: 16px 20px;
+    font-size: 16px;
+    border-radius: 14px;
+    min-height: 52px;
+    border: 2px solid var(--border-color);
+    background: var(--input-bg);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  }
+
+  .input-area.centered .model-selector {
+    padding: 10px 16px;
+    border-radius: 10px;
+    background: var(--secondary-color);
+    border: 1px solid var(--border-color);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  }
+
+  .input-area.centered .model-selector select {
+    padding: 10px 14px;
+    font-size: 15px;
+    border-radius: 8px;
+    background: var(--input-bg);
+    border: none;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+  }
+
+  .input-area.centered .model-selector label {
+    font-size: 13px;
+    font-weight: 600;
   }
 
   .input-controls {
@@ -2435,12 +2997,33 @@ button[disabled]:hover {
   }
 
   button {
-    padding: 14px 20px;
+    padding: 12px 18px;
     font-size: 15px;
     border-radius: 10px;
     min-width: 80px;
     width: 100%;
     max-width: 120px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+  }
+
+  .input-area.centered button:last-child {
+    background: var(--primary-color);
+    color: white;
+    border: 1px solid var(--primary-color);
+    font-weight: 600;
+  }
+
+  .input-area.centered button:not(:last-child) {
+    background: var(--primary-color);
+    color: white;
+    border: 1px solid var(--primary-color);
+  }
+
+  .input-area.centered button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   }
 
   .action-btn {
@@ -2486,6 +3069,38 @@ button[disabled]:hover {
 
   .listening-indicator {
     padding: 8px 20px 0;
+  }
+
+  /* 输入区域折叠按钮小屏幕优化 */
+  .input-collapse-btn {
+    display: flex; /* 在移动端显示 */
+    width: 28px;
+    height: 28px;
+    min-width: 28px;
+    min-height: 28px;
+    max-width: 28px;
+    max-height: 28px;
+    font-size: 12px;
+    top: 6px;
+    left: 6px;
+  }
+
+  .collapse-icon {
+    font-size: 10px;
+  }
+
+  .input-area.collapsed {
+    padding-top: 40px;
+  }
+
+  .input-area.collapsed .input-collapse-btn {
+    top: 6px;
+    left: 6px;
+  }
+
+  .input-content {
+    padding: 12px;
+    padding-top: 0;
   }
 
   .mobile-menu-btn {
@@ -2590,6 +3205,88 @@ button[disabled]:hover {
   }
 }
 
+/* 极小屏幕设备优化 */
+@media (max-width: 360px) {
+  .title-model-selector {
+    margin-left: 20px;
+  }
+  
+  .current-model {
+    padding: 3px 5px;
+    min-width: 70px;
+  }
+  
+  .model-name {
+    font-size: 8px;
+  }
+  
+  .model-icon {
+    font-size: 10px;
+    width: 12px;
+    height: 12px;
+  }
+  
+  .dropdown-arrow {
+    font-size: 6px;
+  }
+  
+  .title-text {
+    display: none;
+  }
+
+  .title-model-selector {
+    position: static;
+    left: auto;
+    top: auto;
+    transform: none;
+    margin-left: 0;
+  }
+  
+  .chat-title {
+    padding: 12px 45px 12px 15px;
+  }
+  
+  .title-edit-container {
+    position: static;
+    transform: none;
+    width: 70%;
+    max-width: 200px;
+    min-width: 150px;
+    left: auto;
+    top: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto;
+  }
+  
+  .title-input {
+    min-width: 100px;
+    font-size: 0.9rem;
+    padding: 6px 10px;
+    text-align: center;
+    border-radius: 6px;
+  }
+}
+
+/* 中等屏幕优化 - 处理PC浏览器宽度较低的情况 */
+@media (max-width: 1024px) and (min-width: 769px) {
+  .title-model-selector {
+    left: 50px;
+  }
+  
+  .current-model {
+    min-width: 140px;
+    padding: 6px 10px;
+  }
+  
+  .model-name {
+    font-size: 11px;
+  }
+  
+  /* 模型描述由Vue条件渲染控制显示 */
+}
+
 /* 小屏幕设备进一步优化 */
 @media (max-width: 480px) {
   .chat-container {
@@ -2598,13 +3295,52 @@ button[disabled]:hover {
   }
 
   .chat-title {
-    padding: 16px 50px 16px 20px;
+    padding: 12px 50px 12px 20px;
     font-size: 1.1rem;
   }
 
+  .title-model-selector {
+    margin-left: 30px;
+  }
+
+  .current-model {
+    padding: 4px 6px;
+    border-radius: 6px;
+    min-width: 80px;
+  }
+
+  .model-name {
+    font-size: 9px;
+  }
+
+  /* 模型描述由Vue条件渲染控制显示 */
+
+  .model-icon {
+    font-size: 12px;
+    width: 14px;
+    height: 14px;
+  }
+
+  .dropdown-arrow {
+    font-size: 8px;
+  }
+
+  .model-option {
+    padding: 8px 10px;
+    gap: 6px;
+  }
+
+  .model-details .model-name {
+    font-size: 11px;
+  }
+
+  .model-description {
+    font-size: 9px;
+  }
+
   .title-text {
-    max-width: 50%;
-    font-size: 1.1rem;
+    max-width: 15ch; /* 限制为15个字符宽度 */
+    font-size: 1rem;
   }
 
   .rename-btn {
@@ -2614,15 +3350,25 @@ button[disabled]:hover {
   }
 
   .title-edit-container {
-    width: 45%;
+    position: static;
+    transform: none;
+    width: 55%;
     max-width: 260px;
-    min-width: 200px;
+    min-width: 180px;
+    left: auto;
+    top: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto;
   }
 
   .title-input {
     min-width: 120px;
     font-size: 1rem;
     padding: 8px 14px;
+    text-align: center;
+    border-radius: 6px;
   }
 
   .mobile-menu-btn {

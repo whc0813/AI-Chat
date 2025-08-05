@@ -33,10 +33,31 @@
         @click="handleConversationSwitch(conv.originalIndex)"
         class="conversation-item"
       >
-        <div class="conv-title">{{ conv.title }}</div>
+        <div class="conv-content">
+          <div v-if="renamingIndex !== conv.originalIndex" class="conv-title">{{ conv.title }}</div>
+          <input 
+            v-else 
+            v-model="newTitle"
+            @keyup.enter="saveRename(conv.originalIndex)"
+            @blur="saveRename(conv.originalIndex)"
+            @click.stop
+            class="rename-input"
+            ref="renameInput"
+            maxlength="50"
+          />
+        </div>
+        <div class="conv-actions">
+          <button 
+            v-if="renamingIndex !== conv.originalIndex"
+            class="rename-btn" 
+            @click.stop="startRename(conv.originalIndex, conv.title)" 
+            :disabled="isGenerating"
+            title="重命名"
+          >✏️</button>
+          <button class="delete-btn" @click.stop="deleteConversation(conv.originalIndex)" :disabled="isGenerating" title="删除">×</button>
+        </div>
         <div class="conv-meta">
           <span class="conv-time">{{ formatTime(conv.updatedAt || conv.createdAt) }}</span>
-          <button class="delete-btn" @click.stop="deleteConversation(conv.originalIndex)" :disabled="isGenerating">×</button>
         </div>
       </div>
     </div>
@@ -67,7 +88,9 @@ export default {
   data() {
     return {
       isCollapsed: JSON.parse(localStorage.getItem('sidebarCollapsed') || 'false'),
-      searchQuery: ''
+      searchQuery: '',
+      renamingIndex: null,
+      newTitle: ''
     };
   },
   mounted() {
@@ -125,6 +148,28 @@ export default {
     handleTransitionEnd() {
       // 处理过渡动画结束事件
       // 可以在这里添加动画完成后的逻辑
+    },
+    startRename(index, currentTitle) {
+      this.renamingIndex = index;
+      this.newTitle = currentTitle;
+      this.$nextTick(() => {
+        const input = this.$refs.renameInput;
+        if (input) {
+          // 如果是数组，取第一个元素；如果是单个元素，直接使用
+          const inputElement = Array.isArray(input) ? input[0] : input;
+          if (inputElement && inputElement.focus) {
+            inputElement.focus();
+            inputElement.select();
+          }
+        }
+      });
+    },
+    saveRename(index) {
+      if (this.newTitle.trim() && this.newTitle.trim() !== this.conversations[index].title) {
+        this.$emit('rename-conversation', { index, newTitle: this.newTitle.trim() });
+      }
+      this.renamingIndex = null;
+      this.newTitle = '';
     }
   },
   computed: {
@@ -243,8 +288,8 @@ export default {
 }
 
 .conversation-item {
-  padding: 14px 16px;
-  margin: 6px 0;
+  padding: 8px 70px 8px 16px;
+  margin: 4px 0;
   border-radius: 10px;
   cursor: pointer;
   display: flex;
@@ -253,6 +298,7 @@ export default {
   border: 1px solid var(--border-color);
   transition: all 0.2s ease;
   transform: translateX(0);
+  position: relative;
 }
 
 .conversation-item:hover {
@@ -266,6 +312,11 @@ export default {
   border-left: 3px solid var(--primary-color);
 }
 
+.conv-content {
+  flex: 1;
+  min-width: 0;
+}
+
 .conv-title {
   white-space: nowrap;
   overflow: hidden;
@@ -275,9 +326,54 @@ export default {
   color: var(--text-color);
 }
 
+.rename-input {
+  width: 100%;
+  padding: 4px 8px;
+  border: 1px solid var(--primary-color);
+  border-radius: 4px;
+  background: var(--input-bg);
+  color: var(--text-color);
+  font-size: 14px;
+  font-weight: 500;
+  outline: none;
+}
+
+.conv-actions {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  transform: translateY(-50%);
+  display: flex;
+  gap: 8px;
+  opacity: 1;
+  transition: opacity 0.2s ease;
+}
+
+.rename-btn {
+  background: none;
+  border: none;
+  color: var(--text-color);
+  opacity: 0.7;
+  font-size: 14px;
+  cursor: pointer;
+  padding: 4px;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.rename-btn:hover {
+  background: var(--secondary-color);
+  opacity: 1;
+}
+
 .conv-meta {
   display: flex;
-  justify-content: space-between;
   align-items: center;
   margin-top: 6px;
   font-size: 12px;
@@ -286,20 +382,29 @@ export default {
 }
 
 .conv-time {
-  opacity: 0.8;
+  display: none;
 }
 
 .delete-btn {
   background: none;
   border: none;
   color: var(--text-color);
-  opacity: 0.5;
-  font-size: 18px;
+  opacity: 0.7;
+  font-size: 14px;
   cursor: pointer;
-  padding: 0 5px;
+  padding: 4px;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
 }
 
 .delete-btn:hover {
+  background: var(--secondary-color);
   color: #e53e3e;
   opacity: 1;
 }
@@ -548,12 +653,13 @@ button:disabled {
   }
 
   .conversation-item {
-    padding: 20px;
-    margin: 12px 0;
+    padding: 12px 50px 12px 12px;
+    margin: 8px 0;
     border-radius: 16px;
     background: var(--card-bg);
     border: 1px solid var(--border-color);
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+    position: relative;
   }
 
   .conversation-item:hover {
@@ -570,6 +676,27 @@ button:disabled {
   .conv-meta {
     font-size: 14px;
     margin-top: 12px;
+  }
+
+  .conv-actions {
+    position: absolute;
+    top: 50%;
+    right: 12px;
+    transform: translateY(-50%);
+    display: flex;
+    gap: 8px;
+  }
+
+  .rename-btn {
+    font-size: 20px;
+    padding: 8px;
+    border-radius: 50%;
+    background: var(--secondary-color);
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 
   .delete-btn {
@@ -656,8 +783,20 @@ button:disabled {
     margin-top: 10px;
   }
 
+  .conv-actions {
+    right: 10px;
+    gap: 6px;
+  }
+
+  .rename-btn {
+    font-size: 18px;
+    width: 32px;
+    height: 32px;
+    padding: 6px;
+  }
+
   .delete-btn {
-    font-size: 22px;
+    font-size: 20px;
     width: 32px;
     height: 32px;
     padding: 6px;

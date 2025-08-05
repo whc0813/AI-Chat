@@ -5,7 +5,7 @@
         ref="sidebar"
         :conversations="sortedConversations"
         :currentConversationIndex="currentConversationIndex"
-        :isGenerating="$refs.chatContainer?.isGenerating || false"
+        :isGenerating="isGenerating"
         @update-conversations="updateConversations"
         @new-chat="newChat"
         @switch-conversation="switchConversation"
@@ -13,6 +13,7 @@
         @export-chats="exportChats"
         @clear-all-chats="clearAllChats"
         @export-current-chat="exportCurrentChat"
+        @rename-conversation="renameConversation"
       />
       <div class="main-content">
         <ChatContainer
@@ -27,6 +28,7 @@
           @update-title-stream="handleUpdateTitleStream"
           @update-title="handleUpdateTitle"
           @toggle-sidebar="toggleSidebar"
+          @generating-changed="handleGeneratingChanged"
           ref="chatContainer"
         />
       </div>
@@ -48,6 +50,7 @@ export default {
     const savedConversations = JSON.parse(localStorage.getItem('conversations'));
     return {
       isDarkMode: false,
+      isGenerating: false,
       conversations: savedConversations || [{
         id: this.generateId(),
         title: '新对话',
@@ -215,6 +218,15 @@ export default {
       if (this.$refs.sidebar) {
         this.$refs.sidebar.toggleCollapse();
       }
+    },
+    renameConversation({ index, newTitle }) {
+      if (this.conversations[index]) {
+        this.conversations[index].title = newTitle;
+        this.conversations[index].updatedAt = new Date().toISOString();
+      }
+    },
+    handleGeneratingChanged(isGenerating) {
+      this.isGenerating = isGenerating;
     }
   }
 };
