@@ -14,6 +14,7 @@
         @clear-all-chats="clearAllChats"
         @export-current-chat="exportCurrentChat"
         @rename-conversation="renameConversation"
+        @sidebar-toggle="handleSidebarToggle"
       />
       <div class="main-content">
         <ChatContainer
@@ -227,6 +228,12 @@ export default {
     },
     handleGeneratingChanged(isGenerating) {
       this.isGenerating = isGenerating;
+    },
+    handleSidebarToggle(isCollapsed) {
+      // 强制重新计算布局，防止div错位
+      this.$nextTick(() => {
+        window.dispatchEvent(new Event('resize'));
+      });
     }
   }
 };
@@ -346,11 +353,13 @@ html, body {
 }
 
 .main-content {
-  flex-grow: 1;
+  flex: 1;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   min-width: 0; /* 修复 flex 布局的宽度计算问题 */
+  transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: margin-left;
 }
 
 .markdown-body {

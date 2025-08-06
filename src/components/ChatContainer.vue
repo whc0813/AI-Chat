@@ -57,6 +57,28 @@
     </div>
   <div class="chat-container">
     <div class="chat-messages" ref="chatMessages">
+      <!-- 新对话欢迎界面 -->
+      <div v-if="messages.length === 0" class="welcome-container">
+        <div class="welcome-content">
+          <h1 class="welcome-title">新对话</h1>
+          <p class="welcome-description">询问任何问题</p>
+          <div class="example-questions">
+            <div class="example-item" @click="sendExampleQuestion('数学：的含义解析')">
+              <span class="example-icon">📊</span>
+              <span class="example-text">数学：的含义解析</span>
+            </div>
+            <div class="example-item" @click="sendExampleQuestion('初次见面问候')">
+              <span class="example-icon">👋</span>
+              <span class="example-text">初次见面问候</span>
+            </div>
+            <div class="example-item" @click="sendExampleQuestion('高效沟通问题')">
+              <span class="example-icon">💬</span>
+              <span class="example-text">高效沟通问题</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      
       <div v-for="(message, index) in messages" :key="index" :class="['message', message.role]">
         <div v-if="message.type === 'combined'">
             <div v-if="message.thinking" class="thinking-content">
@@ -66,14 +88,40 @@
                 </div>
                 <div class="thinking-text" v-if="isThinkingExpanded(index)" v-html="renderMarkdown(message.thinking)"></div>
             </div>
-            <div class="plain-content" v-html="renderMarkdown(message.content)"></div>
+            <div class="plain-content" v-if="message.role === 'user'" v-text="message.content"></div>
+            <div class="plain-content" v-else v-html="renderMarkdown(message.content)"></div>
         </div>
+        <div v-if="message.role === 'user'" class="plain-content" v-text="message.content"></div>
         <div v-else class="plain-content" v-html="renderMarkdown(message.content)"></div>
 
         <div v-if="message.attachment" class="message-attachment-info" @click="openFilePreview(message.attachment)">
             <span class="file-icon">{{ getFileIcon(message.attachment.name) }}</span>
             <span>{{ message.attachment.name }}</span>
             <span class="preview-hint">点击预览</span>
+        </div>
+
+        <!-- 模型调用统计信息 -->
+        <div v-if="message.role === 'assistant' && message.stats" class="message-stats">
+          <div class="stats-container">
+            <div class="stats-item">
+              <span class="stats-icon">⏱️</span>
+              <span class="stats-label">耗时:</span>
+              <span class="stats-value">{{ formatDuration(message.stats.duration) }}</span>
+            </div>
+            <div class="stats-item" v-if="message.stats.tokens">
+              <span class="stats-icon">🔢</span>
+              <span class="stats-label">Token:</span>
+              <span class="stats-value">{{ message.stats.tokens.total || 'N/A' }}</span>
+              <span class="stats-detail" v-if="message.stats.tokens.input && message.stats.tokens.output">
+                (输入: {{ message.stats.tokens.input }}, 输出: {{ message.stats.tokens.output }})
+              </span>
+            </div>
+            <div class="stats-item">
+              <span class="stats-icon">{{ getModelIcon(message.stats.model) }}</span>
+              <span class="stats-label">模型:</span>
+              <span class="stats-value">{{ getModelName(message.stats.model) }}</span>
+            </div>
+          </div>
         </div>
 
         <div v-if="message.role === 'assistant'" class="message-actions">
@@ -107,15 +155,11 @@
           正在生成回复...
         </div>
       </div>
+      </div>
     </div>
 
-    <div class="input-area" :class="{ 'centered': messages.length === 0, 'collapsed': isInputCollapsed }">
-      <!-- 移动端折叠按钮 -->
-      <button class="input-collapse-btn" @click="toggleInputCollapse" v-if="isMobile && messages.length > 0">
-        <span class="collapse-icon">{{ isInputCollapsed ? '▲' : '▼' }}</span>
-      </button>
-      
-      <div class="input-content" v-show="!isInputCollapsed || !isMobile">
+    <div class="input-area" style="padding: 0;">
+      <div class="input-content">
       <div v-if="selectedFile" class="file-preview">
         <div class="file-preview-header">
           <span class="file-icon">{{ getFileIcon(selectedFile.name) }}</span>
@@ -135,53 +179,40 @@
       </div>
 
       <div class="input-controls">
-        <div class="top-controls">
-          <input
-            v-model="userInput"
-            @keyup.enter="handleSend"
-            placeholder="输入消息或上传文件..."
-            :disabled="isGenerating"
-          />
-           <input
-            type="file"
-            ref="fileInput"
-            @change="handleFileChange"
-            style="display: none"
-            accept=".doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.txt,text/plain"
-          />
-        </div>
-        <div class="button-group">
-        <button 
-          class="action-btn"
-          @click="triggerFileUpload" 
-          :disabled="isGenerating" 
-          title="上传文件">
-          📎
+        <button class="add-btn" @click="triggerFileUpload" :disabled="isGenerating" title="添加文件">
+          +
         </button>
-        <button
-          class="action-btn"
-          @click="toggleVoiceInput"
-          :class="{ active: isSpeechRecognizing, disabled: isGenerating }"
-          :disabled="!isSpeechSupported || isGenerating"
-          title="语音输入"
-        >
-          🎤
-        </button>
-        <button
-          class="action-btn"
-          @click="isGenerating ? stopGeneration() : handleSend()"
-          :class="{ 'stop-btn': isGenerating }">
-          {{ isGenerating ? '停止' : '发送' }}
-        </button>
-        <button
-          class="action-btn"
-          @click="$emit('clear-chat')"
+        <input
+          v-model="userInput"
+          @keyup.enter="handleSend"
+          placeholder="询问任何问题"
           :disabled="isGenerating"
-        >
-          清空
-        </button>
+          style="width: 100%;"
+        />
+        <input
+          type="file"
+          ref="fileInput"
+          @change="handleFileChange"
+          style="display: none"
+          accept=".doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.txt,text/plain"
+        />
+        <div class="button-group">
+          <button 
+            class="action-btn"
+            @click="toggleVoiceInput"
+            :class="{ active: isSpeechRecognizing, disabled: isGenerating }"
+            :disabled="!isSpeechSupported || isGenerating"
+            title="语音输入">
+            🎤
+          </button>
+          <button
+            class="action-btn"
+            @click="isGenerating ? stopGeneration() : handleSend()"
+            :class="{ 'stop-btn': isGenerating }"
+            title="发送消息">
+            ⚡
+          </button>
         </div>
-      </div>
       </div>
     </div>
 
@@ -286,6 +317,8 @@ export default {
       expandedThinking: {},
       isCurrentThinkingExpanded: true,
       isGenerating: false,
+      requestStartTime: null,
+      currentRequestStats: null,
       isDarkMode: false,
       debounceTimer: null,
       titleClickTimer: null,
@@ -303,7 +336,7 @@ export default {
       showHtmlPreviewModal: false,
       htmlPreviewContent: '',
       showModelDropdown: false,
-      isInputCollapsed: false,
+
       availableModels: [
         {
           value: 'deepseek-chat',
@@ -378,30 +411,70 @@ export default {
     document.documentElement.classList.toggle('dark-mode', this.isDarkMode);
   },
   methods: {
+    sendExampleQuestion(question) {
+      this.userInput = question;
+    },
+    
     isLastAssistantMessage(index) {
       // 找到最后一条助手消息的索引
       const lastAssistantIndex = this.messages.map(m => m.role).lastIndexOf('assistant');
       return index === lastAssistantIndex;
     },
-    toggleInputCollapse() {
-      this.isInputCollapsed = !this.isInputCollapsed;
-    },
+
     renderMarkdown(content) {
         if (!content) return '';
         try {
             const katexBlocks = [];
-            content = content.replace(/(\$\$|\\\[)([\s\S]+?)(\$\$|\\\])/g, (match) => {
-                const key = `KATEX_BLOCK_${katexBlocks.length}`;
-                katexBlocks.push({ key, content: match, block: true });
+            const codeBlocks = [];
+            
+            // 先保护代码块，避免其中的LaTeX语法被误识别为数学公式
+            content = content.replace(/```[\s\S]*?```/g, (match) => {
+                const key = `CODE_BLOCK_${codeBlocks.length}`;
+                codeBlocks.push({ key, content: match });
                 return key;
             });
-            content = content.replace(/(?<!\\)(\$|\\\()([\s\S]+?)(\$|\\\))/g, (match, p1, p2, p3) => {
-                if (!p2.trim() || p2.match(/\s/)) {
-                    return match;
-                }
-                const key = `KATEX_BLOCK_${katexBlocks.length}`;
-                katexBlocks.push({ key, content: match, block: false });
+            
+            // 保护行内代码
+            content = content.replace(/`[^`\n]+?`/g, (match) => {
+                const key = `CODE_BLOCK_${codeBlocks.length}`;
+                codeBlocks.push({ key, content: match });
                 return key;
+            });
+            
+            // 处理块级数学公式 $$...$$, \[...\] - 改进的正则表达式
+            content = content.replace(/(\$\$|\\\[)([\s\S]*?)(\$\$|\\\])/g, (match, start, formula, end) => {
+                if (formula.trim()) {
+                    const key = `KATEX_BLOCK_${katexBlocks.length}`;
+                    katexBlocks.push({ key, content: formula.trim(), block: true, original: match });
+                    return key;
+                }
+                return match;
+            });
+            
+            // 处理行内数学公式 $...$, \(...\) - 改进的正则表达式，避免误匹配
+            content = content.replace(/(?<!\\)(\$)([^\$\n]+?)(\$)(?!\$)/g, (match, start, formula, end) => {
+                // 确保公式内容不为空且不包含换行，并且不是货币符号
+                if (formula.trim() && !formula.includes('\n') && !/^\d+(\.\d+)?$/.test(formula.trim())) {
+                    const key = `KATEX_BLOCK_${katexBlocks.length}`;
+                    katexBlocks.push({ key, content: formula.trim(), block: false, original: match });
+                    return key;
+                }
+                return match;
+            });
+            
+            // 处理 \(...\) 行内公式
+            content = content.replace(/\\\(([\s\S]*?)\\\)/g, (match, formula) => {
+                if (formula.trim()) {
+                    const key = `KATEX_BLOCK_${katexBlocks.length}`;
+                    katexBlocks.push({ key, content: formula.trim(), block: false, original: match });
+                    return key;
+                }
+                return match;
+            });
+            
+            // 恢复代码块
+            codeBlocks.forEach(({ key, content: code }) => {
+                content = content.replace(key, code);
             });
 
             let html = marked(content);
@@ -409,24 +482,111 @@ export default {
             html = html.replace(/<pre><code class="language-(\w+)">([\s\S]*?)<\/code><\/pre>/g, (_, lang, code) => this._wrapCodeBlock(lang, code))
                      .replace(/<pre><code>([\s\S]*?)<\/code><\/pre>/g, (_, code) => this._wrapCodeBlock('plaintext', code));
 
-            katexBlocks.forEach(({ key, content: formula, block }) => {
+            // 渲染KaTeX公式
+            katexBlocks.forEach(({ key, content: formula, block, original }) => {
                 try {
-                    let renderedKatex;
-                    const formulaContent = formula.replace(/^(\$\$|\\\[|\$|\\\()|(\$\$|\\\]|\$|\\\))$/g, '');
-                    renderedKatex = katex.renderToString(formulaContent, {
+                    const renderedKatex = katex.renderToString(formula, {
                         throwOnError: false,
-                        displayMode: block
+                        displayMode: block,
+                        strict: false,
+                        trust: (context) => {
+                            // 允许一些安全的命令
+                            return ['\\color', '\\textcolor', '\\colorbox', '\\fcolorbox'].includes(context.command);
+                        },
+                        macros: {
+                            // 添加一些常用的数学宏
+                            "\\RR": "\\mathbb{R}",
+                            "\\NN": "\\mathbb{N}",
+                            "\\ZZ": "\\mathbb{Z}",
+                            "\\QQ": "\\mathbb{Q}",
+                            "\\CC": "\\mathbb{C}",
+                            "\\det": "\\operatorname{det}",
+                            "\\sgn": "\\operatorname{sgn}"
+                        },
+                        fleqn: false,
+                        leqno: false,
+                        colorIsTextColor: false,
+                        maxSize: 50,
+                        maxExpand: 1000,
+                        globalGroup: false
                     });
-                    html = html.replace(key, renderedKatex);
+                    
+                    // 为块级公式添加容器样式
+                    const wrappedKatex = block 
+                        ? `<div class="katex-display-wrapper">${renderedKatex}</div>`
+                        : `<span class="katex-inline-wrapper">${renderedKatex}</span>`;
+                    
+                    html = html.replace(key, wrappedKatex);
                 } catch(e) {
-                    console.error("KaTeX rendering error:", e);
-                    html = html.replace(key, `<span class="formula-error">${formula}</span>`);
+                    console.warn("KaTeX rendering failed for formula:", formula, "Error:", e.message);
+                    // 渲染失败时，显示带有错误提示的原始公式
+                    const errorDisplay = block 
+                        ? `<div class="formula-error-block" title="渲染错误: ${e.message}">${original}</div>`
+                        : `<span class="formula-error-inline" title="渲染错误: ${e.message}">${original}</span>`;
+                    html = html.replace(key, errorDisplay);
+                }
+            });
+            
+            // 确保所有未处理的占位符都被恢复为原始内容
+            katexBlocks.forEach(({ key, original }) => {
+                if (html.includes(key)) {
+                    html = html.replace(new RegExp(key, 'g'), `<span class="formula-fallback">${original}</span>`);
                 }
             });
             return html;
 
         } catch (error) {
             console.error('Markdown rendering error:', error);
+            return '<div class="render-error">内容渲染失败</div>';
+        }
+    },
+    renderMarkdownWithoutMath(content) {
+        if (!content) return '';
+        try {
+            const codeBlocks = [];
+            
+            // 保护代码块，避免其中的内容被误处理
+            content = content.replace(/```[\s\S]*?```/g, (match) => {
+                const key = `CODE_BLOCK_${codeBlocks.length}`;
+                codeBlocks.push({ key, content: match });
+                return key;
+            });
+            
+            // 保护行内代码
+            content = content.replace(/`[^`\n]+?`/g, (match) => {
+                const key = `CODE_BLOCK_${codeBlocks.length}`;
+                codeBlocks.push({ key, content: match });
+                return key;
+            });
+            
+            // 使用marked渲染Markdown（不处理数学公式）
+            let html = marked(content, {
+                highlight: function(code, lang) {
+                    if (lang && hljs.getLanguage(lang)) {
+                        try {
+                            return hljs.highlight(code, { language: lang }).value;
+                        } catch (err) {
+                            console.warn('语法高亮失败:', err);
+                        }
+                    }
+                    return hljs.highlightAuto(code).value;
+                },
+                breaks: true,
+                gfm: true
+            });
+            
+            // 恢复代码块
+            codeBlocks.forEach(({ key, content }) => {
+                html = html.replace(new RegExp(key, 'g'), content);
+            });
+            
+            // 应用自定义代码块样式
+            html = html.replace(/<pre><code class="language-(\w+)">([\s\S]*?)<\/code><\/pre>/g, (_, lang, code) => this._wrapCodeBlock(lang, code))
+                     .replace(/<pre><code>([\s\S]*?)<\/code><\/pre>/g, (_, code) => this._wrapCodeBlock('plaintext', code));
+            
+            return html;
+        } catch (error) {
+            console.error('Markdown rendering error (without math):', error);
             return '<div class="render-error">内容渲染失败</div>';
         }
     },
@@ -557,11 +717,19 @@ export default {
         this.currentAnswer = '';
         this.isCurrentThinkingExpanded = true;
         
+        // 记录请求开始时间
+        this.requestStartTime = Date.now();
+        this.currentRequestStats = {
+            model: this.selectedModel,
+            startTime: this.requestStartTime,
+            tokens: null
+        };
+        
         const userMessageForUI = {
             role: 'user',
             content: userText,
             type: 'simple',
-            attachment: null,
+            attachment: null
         };
 
         if (file) {
@@ -588,7 +756,7 @@ export default {
 
         try {
             const messagesForAPI = this.formatMessagesForAPI(this.messages);
-            await chatWithAI(
+            const result = await chatWithAI(
                 messagesForAPI,
                 this.selectedModel,
                 (content, type) => {
@@ -599,6 +767,11 @@ export default {
                     }
                 }
             );
+            
+            // 更新Token统计信息
+            if (result && result.tokens) {
+                this.currentRequestStats.tokens = result.tokens;
+            }
 
             if (this.messages.length === 1) {
                 this.generateTitleFromConversation();
@@ -689,6 +862,14 @@ export default {
             this.currentAnswer = '';
             this.isCurrentThinkingExpanded = true;
             
+            // 记录请求开始时间
+            this.requestStartTime = Date.now();
+            this.currentRequestStats = {
+                model: this.selectedModel,
+                startTime: this.requestStartTime,
+                tokens: null
+            };
+            
             const lastAssistantIndex = this.messages.map(m => m.role).lastIndexOf('assistant');
             if (lastAssistantIndex > -1) {
                 this.$emit('delete-message', lastAssistantIndex);
@@ -698,7 +879,7 @@ export default {
 
             try {
                 const messagesForAPI = this.formatMessagesForAPI(this.messages);
-                await chatWithAI(
+                const result = await chatWithAI(
                     messagesForAPI,
                     this.selectedModel,
                     (content, type) => {
@@ -709,6 +890,12 @@ export default {
                         }
                     }
                 );
+                
+                // 更新Token统计信息
+                if (result && result.tokens) {
+                    this.currentRequestStats.tokens = result.tokens;
+                }
+                
                 this.addAIMessage();
             } catch (error) {
                 if (error.name !== 'AbortError') {
@@ -727,11 +914,21 @@ export default {
         }
     },
     addAIMessage() {
+        // 计算请求耗时
+        const endTime = Date.now();
+        const duration = this.requestStartTime ? endTime - this.requestStartTime : 0;
+        
         const aiMessage = {
             role: 'assistant',
             content: this.currentAnswer,
             type: this.selectedModel === 'deepseek-reasoner' ? 'combined' : 'simple',
-            isStreaming: false
+            isStreaming: false,
+            stats: {
+                model: this.selectedModel,
+                duration: duration,
+                tokens: this.currentRequestStats?.tokens || null,
+                timestamp: endTime
+            }
         };
         if (this.selectedModel === 'deepseek-reasoner') {
             aiMessage.thinking = this.currentThinking;
@@ -1144,6 +1341,21 @@ export default {
       closeHtmlPreview() {
           this.showHtmlPreviewModal = false;
           this.htmlPreviewContent = '';
+      },
+      
+      // 格式化时间显示
+      formatDuration(milliseconds) {
+          if (!milliseconds || milliseconds < 0) return 'N/A';
+          
+          if (milliseconds < 1000) {
+              return `${milliseconds}ms`;
+          } else if (milliseconds < 60000) {
+              return `${(milliseconds / 1000).toFixed(1)}s`;
+          } else {
+              const minutes = Math.floor(milliseconds / 60000);
+              const seconds = Math.floor((milliseconds % 60000) / 1000);
+              return `${minutes}m ${seconds}s`;
+          }
       }
 
   },
@@ -1182,6 +1394,68 @@ export default {
     font-size: 11px;
     opacity: 0.7;
     margin-left: auto;
+}
+
+/* 模型调用统计信息样式 */
+.message-stats {
+    margin-top: 12px;
+    padding: 8px 12px;
+    background: rgba(0, 0, 0, 0.03);
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    font-size: 11px;
+    color: var(--text-color);
+    opacity: 0.8;
+    transition: all 0.2s ease;
+}
+
+.message-stats:hover {
+    opacity: 1;
+    background: rgba(0, 0, 0, 0.05);
+}
+
+.stats-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
+}
+
+.stats-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+}
+
+.stats-icon {
+    font-size: 12px;
+    opacity: 0.7;
+}
+
+.stats-label {
+    font-weight: 500;
+    opacity: 0.8;
+}
+
+.stats-value {
+    font-weight: 600;
+    color: var(--primary-color);
+}
+
+.stats-detail {
+    font-size: 10px;
+    opacity: 0.6;
+    margin-left: 2px;
+}
+
+/* 深色模式下的统计信息样式 */
+:root.dark-mode .message-stats {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+:root.dark-mode .message-stats:hover {
+    background: rgba(255, 255, 255, 0.08);
 }
 /* ... 其他所有样式保持不变 ... */
 /* 新增文件预览样式 */
@@ -1286,7 +1560,7 @@ export default {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 12px 16px;
+  padding: 12px 0;
   background: var(--gradient-secondary);
   border-top: 1px solid var(--border-color);
   position: relative;
@@ -1294,35 +1568,9 @@ export default {
   border-radius: 0 0 16px 16px;
 }
 
-.input-controls {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  flex-wrap: nowrap;
-}
 
-.input-area.centered .input-controls {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  align-items: stretch;
-}
 
-.input-area.centered .top-controls {
-  display: flex;
-  gap: 20px;
-  align-items: center;
-  justify-content: center;
-  flex-wrap: wrap;
-  margin-bottom: 8px;
-}
 
-.top-controls {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  flex: 1;
-}
 
 .input-area.centered {
   position: absolute;
@@ -1384,8 +1632,9 @@ export default {
 
 .button-group {
   display: flex;
-  gap: 16px;
+  gap: 12px;
   align-items: center;
+  flex-shrink: 0;
 }
 
 .input-area.centered .button-group {
@@ -1413,6 +1662,75 @@ export default {
   color: #e53e3e;
   font-size: 14px;
   text-align: center;
+  font-weight: 500;
+}
+
+/* 欢迎界面样式 */
+.welcome-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 60vh;
+  padding: 40px 20px;
+}
+
+.welcome-content {
+  text-align: center;
+  max-width: 600px;
+  width: 100%;
+}
+
+.welcome-title {
+  font-size: 2.5rem;
+  font-weight: 600;
+  color: var(--text-color);
+  margin-bottom: 16px;
+  line-height: 1.2;
+}
+
+.welcome-description {
+  font-size: 1.1rem;
+  color: var(--text-secondary);
+  margin-bottom: 40px;
+  opacity: 0.8;
+}
+
+.example-questions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 400px;
+  margin: 0 auto;
+}
+
+.example-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: left;
+}
+
+.example-item:hover {
+  background: var(--action-btn-bg);
+  border-color: var(--primary-color);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.example-icon {
+  font-size: 1.2rem;
+  flex-shrink: 0;
+}
+
+.example-text {
+  font-size: 0.95rem;
+  color: var(--text-color);
   font-weight: 500;
 }
 .title-text {
@@ -1715,7 +2033,7 @@ export default {
   display: flex;
   flex-direction: column;
   background-color: var(--card-bg);
-  border-radius: 16px;
+  border-radius: 0;
   overflow: hidden;
   box-shadow: var(--shadow-lg);
   backdrop-filter: blur(10px);
@@ -1839,9 +2157,11 @@ export default {
 }
 input {
   flex-grow: 1;
-  padding: 10px 14px;
+  max-width: 85%; /* 增加输入框最大宽度，减少右侧空白 */
+  height: 32px;
+  padding: 6px 14px;
   border: 2px solid var(--border-color);
-  border-radius: 10px;
+  border-radius: 8px;
   font-size: 14px;
   background-color: var(--input-bg);
   color: var(--text-color);
@@ -1849,13 +2169,13 @@ input {
   backdrop-filter: blur(10px);
   transition: all 0.3s ease;
   transform: scale(1);
+  box-sizing: border-box;
 }
 input:focus {
   outline: none;
   border-color: var(--primary-color);
   box-shadow: 0 0 0 4px rgba(14, 165, 233, 0.15), var(--shadow-md);
   background-color: var(--card-bg);
-  transform: scale(1.02);
 }
 input::placeholder {
   color: var(--text-color);
@@ -1865,7 +2185,8 @@ input:focus::placeholder {
   opacity: 0.3;
 }
 button {
-  padding: 10px 16px;
+  height: 32px;
+  padding: 6px 16px;
   background: var(--gradient-primary);
   color: white;
   border: none;
@@ -1879,6 +2200,10 @@ button {
   flex-shrink: 0;
   transition: all 0.3s ease;
   transform: translateY(0);
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* 新对话界面按钮样式 */
@@ -1898,24 +2223,31 @@ button {
   box-shadow: 0 4px 16px rgba(66, 153, 225, 0.25);
 }
 
-/* 发送按钮特殊样式 */
+/* 发送按钮样式 */
 .input-area.centered button:last-child {
-  background: linear-gradient(135deg, var(--primary-color) 0%, #0284c7 100%);
-  color: white;
-  font-weight: 700;
+  background: var(--secondary-color);
+  color: var(--text-color);
+  border: 1px solid var(--border-color);
+  font-weight: 600;
 }
 
 /* 功能按钮样式 */
 .input-area.centered button:not(:last-child) {
-  background: var(--primary-color);
-  color: white;
-  border: 1px solid var(--primary-color);
+  background: var(--secondary-color);
+  color: var(--text-color);
+  border: 1px solid var(--border-color);
 }
 
 .input-area.centered button:not(:last-child):hover {
-  background: var(--primary-hover);
+  background: var(--primary-color);
   color: white;
-  border-color: var(--primary-hover);
+  border-color: var(--primary-color);
+}
+
+.input-area.centered button:last-child:hover {
+  background: var(--primary-color);
+  color: white;
+  border-color: var(--primary-color);
 }
 button:hover {
   transform: translateY(-1px);
@@ -1938,6 +2270,50 @@ button::before {
 button.active {
   background: linear-gradient(135deg, var(--error-color) 0%, #dc2626 100%);
   box-shadow: var(--shadow-sm);
+  animation: pulse-recording 1.5s ease-in-out infinite;
+  position: relative;
+}
+
+/* 语音识别中的脉冲动画 */
+@keyframes pulse-recording {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.7);
+  }
+  50% {
+    transform: scale(1.05);
+    box-shadow: 0 0 0 8px rgba(220, 38, 38, 0.2);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(220, 38, 38, 0);
+  }
+}
+
+/* 语音识别中的呼吸光效 */
+button.active::before {
+  content: '';
+  position: absolute;
+  top: -2px;
+  left: -2px;
+  right: -2px;
+  bottom: -2px;
+  background: linear-gradient(45deg, #ff6b6b, #ee5a24, #ff6b6b);
+  border-radius: inherit;
+  z-index: -1;
+  animation: breathing-glow 2s ease-in-out infinite;
+  opacity: 0.6;
+}
+
+@keyframes breathing-glow {
+  0%, 100% {
+    opacity: 0.6;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.9;
+    transform: scale(1.02);
+  }
 }
 
 .listening-indicator {
@@ -1945,6 +2321,17 @@ button.active {
   color: var(--primary-color);
   font-size: 14px;
   text-align: center;
+  animation: fade-pulse 1.5s ease-in-out infinite;
+}
+
+/* 聆听指示器的淡入淡出动画 */
+@keyframes fade-pulse {
+  0%, 100% {
+    opacity: 0.7;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 .thinking-content {
   margin-bottom: 20px;
@@ -2012,19 +2399,21 @@ button.active {
 }
 /* 输入区域的action-btn样式 */
 .input-area .action-btn {
-  width: 28px;
-  height: 28px;
-  padding: 0;
+  min-width: 36px;
+  height: 32px;
+  padding: 6px 12px;
   display: flex;
   align-items: center;
   justify-content: center;
   background: var(--primary-color);
   border: none;
-  border-radius: 6px;
+  border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s ease;
   transform: scale(1);
   color: white;
+  font-size: 12px;
+  white-space: nowrap;
 }
 .input-area .action-btn:hover {
   background: var(--primary-hover);
@@ -2473,6 +2862,102 @@ button.active {
 
 
 
+/* KaTeX 数学公式样式优化 */
+:deep(.katex) {
+  font-size: 1.1em !important;
+  color: var(--text-color) !important;
+}
+
+:deep(.katex-display) {
+  margin: 1em 0 !important;
+  text-align: center !important;
+}
+
+:deep(.katex .base) {
+  color: var(--text-color) !important;
+}
+
+:deep(.katex .mord) {
+  color: var(--text-color) !important;
+}
+
+:deep(.katex .mbin),
+:deep(.katex .mrel),
+:deep(.katex .mop) {
+  color: var(--primary-color) !important;
+}
+
+:deep(.katex .mopen),
+:deep(.katex .mclose) {
+  color: var(--text-color) !important;
+}
+
+:deep(.katex .mpunct) {
+  color: var(--text-color) !important;
+}
+
+/* 公式错误样式 */
+.formula-error {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 0.9em;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  cursor: help;
+}
+
+/* 公式回退样式 */
+.formula-fallback {
+  background: rgba(251, 191, 36, 0.1);
+  color: #f59e0b;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 0.9em;
+  border: 1px solid rgba(251, 191, 36, 0.3);
+  cursor: help;
+}
+
+/* 暗色模式下的 KaTeX 样式 */
+[data-theme="dark"] :deep(.katex) {
+  color: #e5e7eb !important;
+}
+
+[data-theme="dark"] :deep(.katex .base),
+[data-theme="dark"] :deep(.katex .mord),
+[data-theme="dark"] :deep(.katex .mopen),
+[data-theme="dark"] :deep(.katex .mclose),
+[data-theme="dark"] :deep(.katex .mpunct) {
+  color: #e5e7eb !important;
+}
+
+[data-theme="dark"] :deep(.katex .mbin),
+[data-theme="dark"] :deep(.katex .mrel),
+[data-theme="dark"] :deep(.katex .mop) {
+  color: #38bdf8 !important;
+}
+
+/* 亮色模式下的 KaTeX 样式 */
+[data-theme="light"] :deep(.katex) {
+  color: #1a1d23 !important;
+}
+
+[data-theme="light"] :deep(.katex .base),
+[data-theme="light"] :deep(.katex .mord),
+[data-theme="light"] :deep(.katex .mopen),
+[data-theme="light"] :deep(.katex .mclose),
+[data-theme="light"] :deep(.katex .mpunct) {
+  color: #1a1d23 !important;
+}
+
+[data-theme="light"] :deep(.katex .mbin),
+[data-theme="light"] :deep(.katex .mrel),
+[data-theme="light"] :deep(.katex .mop) {
+  color: #0ea5e9 !important;
+}
+
 /* 复制反馈样式 */
 .copy-feedback {
   position: fixed;
@@ -2675,6 +3160,95 @@ button[disabled]:hover {
   font-weight: 600;
 }
 
+/* 桌面端input-controls样式 - 统一容器内水平排列 */
+.input-controls {
+  display: flex;
+  align-items: center;
+  background: var(--input-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 0;
+  padding: 8px 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  margin: 0;
+  gap: 12px;
+  position: relative;
+}
+
+.input-controls .add-btn {
+  width: 48px;
+  height: 36px;
+  min-width: 48px;
+  max-width: 48px;
+  padding: 0;
+  border-radius: 8px;
+  background: var(--secondary-color);
+  border: 1px solid var(--border-color);
+  color: var(--text-color);
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.input-controls .add-btn:hover {
+  background: var(--primary-color);
+  color: white;
+  transform: scale(1.05);
+}
+
+.input-controls input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  padding: 12px 16px;
+  font-size: 16px;
+  color: var(--text-color);
+  outline: none;
+  border-radius: 0;
+  box-shadow: none;
+  min-width: 0;
+}
+
+.input-controls input::placeholder {
+  color: var(--text-color);
+  opacity: 0.6;
+}
+
+.input-controls .button-group {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.input-controls .action-btn {
+  width: 48px;
+  height: 36px;
+  min-width: 48px;
+  max-width: 48px;
+  padding: 0;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  background: var(--secondary-color);
+  border: 1px solid var(--border-color);
+  color: var(--text-color);
+  transition: all 0.2s ease;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.input-controls .action-btn:hover {
+  background: var(--primary-color);
+  color: white;
+  transform: scale(1.05);
+}
+
 /* 移动端菜单按钮 - 默认隐藏 */
 .mobile-menu-btn {
   display: none;
@@ -2696,7 +3270,11 @@ button[disabled]:hover {
   .chat-container {
     width: 96%;
     margin: 15px auto;
-    border-radius: 16px;
+    border-radius: 0;
+  }
+
+  .input-area {
+    padding: 12px 0;
   }
 
   .chat-title {
@@ -2837,85 +3415,160 @@ button[disabled]:hover {
   }
 
   .input-area {
-    padding: 16px;
+    padding: 16px 0;
     border-radius: 0 0 16px 16px;
     position: relative;
   }
 
-  /* 输入区域折叠按钮 */
-  .input-collapse-btn {
-    position: absolute;
-    top: 8px;
-    left: 8px;
-    display: none; /* 默认在PC端隐藏 */
-    align-items: center;
-    justify-content: center;
-    width: 32px;
-    height: 32px;
-    min-width: 32px;
-    min-height: 32px;
-    max-width: 32px;
-    max-height: 32px;
-    padding: 0;
-    margin: 0;
-    background: var(--secondary-color);
-    border: 1px solid var(--border-color);
-    border-radius: 50%;
-    color: var(--text-color);
-    font-size: 14px;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    z-index: 10;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-    box-sizing: border-box;
-    flex-shrink: 0;
-  }
 
-  .input-collapse-btn:hover {
-    background: var(--primary-color);
-    color: white;
-    border-color: var(--primary-color);
-    transform: scale(1.1);
-  }
-
-  .collapse-icon {
-    font-size: 12px;
-    transition: transform 0.2s ease;
-  }
-
-  /* 折叠状态样式 */
-  .input-area.collapsed {
-    padding: 0;
-    padding-top: 48px;
-  }
-
-  .input-area.collapsed .input-collapse-btn {
-    top: 8px;
-    left: 8px;
-  }
 
   .input-content {
-    padding: 16px;
+    padding: 0;
     padding-top: 0;
   }
 
-  .input-area.centered {
-    width: 94%;
+  /* 移动端布局样式 */
+  .input-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    margin: 0;
+    background: var(--input-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 0;
+    padding: 16px 12px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+  }
+
+  /* 移动端输入框 */
+  .input-controls input {
+    order: 1;
+    width: 100%;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    padding: 14px 12px;
+    font-size: 16px;
+    color: var(--text-color);
+    outline: none;
+    box-shadow: none;
+    margin: 0;
+    transition: all 0.2s ease;
+    box-sizing: border-box;
+  }
+
+  .input-controls input:focus {
+    border: none;
+    box-shadow: none;
+  }
+
+  .input-controls input::placeholder {
+    color: var(--text-color);
+    opacity: 0.6;
+  }
+
+  /* 移动端按钮容器 - 水平排列所有按钮 */
+  .input-controls .button-group {
+    order: 2;
+  }
+
+  /* 创建按钮行容器 */
+  .input-controls {
+    position: relative;
+  }
+
+  .input-controls .add-btn {
+    position: absolute;
+    bottom: 16px;
+    left: 12px;
+    width: 60px;
+    height: 48px;
+    min-width: 60px;
+    max-width: 60px;
+    padding: 0;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    background: var(--secondary-color);
+    border: 1px solid var(--border-color);
+    color: var(--text-color);
+    transition: all 0.2s ease;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  }
+
+  .input-controls .button-group {
+    position: absolute;
+    bottom: 16px;
+    right: 12px;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .input-controls .button-group .action-btn {
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+    max-width: 40px;
+  }
+
+  .input-controls .add-btn:hover {
+    background: var(--primary-color);
+    color: white;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(66, 153, 225, 0.3);
+  }
+
+  .input-controls .button-group .action-btn {
+    width: 60px;
+    height: 48px;
+    min-width: 60px;
+    max-width: 60px;
+    padding: 0;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    background: var(--secondary-color);
+    border: 1px solid var(--border-color);
+    color: var(--text-color);
+    transition: all 0.2s ease;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    font-weight: 600;
+  }
+
+  .input-controls .button-group .action-btn:hover {
+    background: var(--primary-color);
+    color: white;
+    border-color: var(--primary-color);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(66, 153, 225, 0.3);
+  }
+
+
+
+  /* 为按钮留出空间 */
+  .input-controls {
+    padding-bottom: 80px;
+  }
+
+.input-area.centered {
+    width: 90%;
     max-width: none;
-    padding: 24px;
-    top: 45%;
-    border-radius: 20px;
-    gap: 20px;
+    padding: 20px;
+    top: 50%;
+    border-radius: 24px;
+    gap: 16px;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15), 0 2px 8px rgba(0, 0, 0, 0.1);
     backdrop-filter: blur(20px);
   }
 
-  .input-area.centered .top-controls {
-    flex-direction: column;
-    gap: 16px;
-    align-items: stretch;
-    margin-bottom: 6px;
-  }
+
 
   .input-area.centered .button-group {
     justify-content: center;
@@ -2955,16 +3608,9 @@ button[disabled]:hover {
     font-weight: 600;
   }
 
-  .input-controls {
-    flex-direction: column;
-    gap: 16px;
-  }
 
-  .top-controls {
-    flex-direction: column;
-    gap: 16px;
-    align-items: stretch;
-  }
+
+
 
   .model-selector {
     min-width: auto;
@@ -3071,37 +3717,14 @@ button[disabled]:hover {
     padding: 8px 20px 0;
   }
 
-  /* 输入区域折叠按钮小屏幕优化 */
-  .input-collapse-btn {
-    display: flex; /* 在移动端显示 */
-    width: 28px;
-    height: 28px;
-    min-width: 28px;
-    min-height: 28px;
-    max-width: 28px;
-    max-height: 28px;
-    font-size: 12px;
-    top: 6px;
-    left: 6px;
-  }
 
-  .collapse-icon {
-    font-size: 10px;
-  }
-
-  .input-area.collapsed {
-    padding-top: 40px;
-  }
-
-  .input-area.collapsed .input-collapse-btn {
-    top: 6px;
-    left: 6px;
-  }
 
   .input-content {
-    padding: 12px;
+    padding: 0;
     padding-top: 0;
   }
+
+
 
   .mobile-menu-btn {
     display: flex !important;
@@ -3458,14 +4081,42 @@ button[disabled]:hover {
   }
 
   .input-area {
-    padding: 14px;
+    padding: 14px 0;
   }
 
   .input-area.centered {
     width: 96%;
-    padding: 24px;
+    padding: 24px 0;
     top: 40%;
     border-radius: 18px;
+  }
+
+  /* 移动端欢迎界面样式 */
+  .welcome-container {
+    min-height: 50vh;
+    padding: 20px 16px;
+  }
+
+  .welcome-title {
+    font-size: 2rem;
+    margin-bottom: 12px;
+  }
+
+  .welcome-description {
+    font-size: 1rem;
+    margin-bottom: 30px;
+  }
+
+  .example-questions {
+    max-width: 100%;
+  }
+
+  .example-item {
+    padding: 14px 16px;
+  }
+
+  .example-text {
+    font-size: 0.9rem;
   }
 
   input {
@@ -3550,5 +4201,104 @@ button[disabled]:hover {
 .hljs .hljs-built_in,
 .hljs .hljs-builtin-name {
   color: #e6c07b !important;
+}
+
+/* 数学公式样式优化 */
+.katex-display-wrapper {
+  margin: 1.5em 0;
+  text-align: center;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.5em 0;
+}
+
+.katex-inline-wrapper {
+  display: inline;
+  margin: 0 0.1em;
+}
+
+.katex-display {
+  margin: 0 !important;
+  text-align: center;
+}
+
+.katex {
+  font-size: 1.1em;
+  color: var(--text-color) !important;
+}
+
+/* 数学公式错误显示样式 */
+.formula-error-block {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 8px;
+  padding: 1em;
+  margin: 1em 0;
+  color: #ef4444;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: 0.9em;
+  cursor: help;
+  text-align: center;
+}
+
+.formula-error-inline {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 4px;
+  padding: 0.2em 0.4em;
+  color: #ef4444;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: 0.9em;
+  cursor: help;
+}
+
+.formula-fallback {
+  background: rgba(251, 191, 36, 0.1);
+  border: 1px solid rgba(251, 191, 36, 0.3);
+  border-radius: 4px;
+  padding: 0.2em 0.4em;
+  color: #f59e0b;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: 0.9em;
+}
+
+/* 深色模式下的数学公式样式 */
+[data-theme="dark"] .katex {
+  color: #e2e8f0 !important;
+}
+
+[data-theme="dark"] .katex .base {
+  color: #e2e8f0 !important;
+}
+
+/* 响应式数学公式 */
+@media (max-width: 768px) {
+  .katex-display-wrapper {
+    margin: 1em 0;
+    padding: 0.3em 0;
+  }
+  
+  .katex {
+    font-size: 1em;
+  }
+  
+  .katex-display {
+    font-size: 1.1em !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .katex {
+    font-size: 0.9em;
+  }
+  
+  .katex-display {
+    font-size: 1em !important;
+  }
+  
+  .katex-display-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
 }
 </style>

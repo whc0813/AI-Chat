@@ -123,6 +123,8 @@ export default {
     this.$nextTick(() => {
       // 强制重绘以解决过渡问题
       this.$el.offsetHeight;
+      // 触发主内容区域重新计算布局
+      this.$emit('sidebar-toggle', this.isCollapsed);
     });
   },
     newChat() {
@@ -201,6 +203,7 @@ export default {
   backdrop-filter: blur(10px);
   box-shadow: 4px 0 15px rgba(0, 0, 0, 0.03);
   will-change: width, min-width;
+  transform: translateZ(0); /* 启用硬件加速 */
 }
 
 

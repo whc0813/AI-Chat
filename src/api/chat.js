@@ -32,6 +32,8 @@ export const cancelAllRequests = () => {
 
 export const streamWithGLM = async (messages, onChunk) => {
   let abortController = null;
+  let tokenStats = { input: 0, output: 0, total: 0 };
+  
   try {
     abortController = new AbortController();
     cancelTokenSources.glm = abortController;
@@ -71,6 +73,16 @@ export const streamWithGLM = async (messages, onChunk) => {
         if (line.startsWith('data:') && !line.includes('[DONE]')) {
           try {
             const data = JSON.parse(line.substring(5).trim());
+            
+            // 收集Token统计信息
+            if (data.usage) {
+              tokenStats = {
+                input: data.usage.prompt_tokens || 0,
+                output: data.usage.completion_tokens || 0,
+                total: data.usage.total_tokens || 0
+              };
+            }
+            
             if (data.choices?.[0]?.delta?.content) {
               onChunk(data.choices[0].delta.content, 'answer');
             }
@@ -80,6 +92,8 @@ export const streamWithGLM = async (messages, onChunk) => {
         }
       }
     }
+    
+    return { tokens: tokenStats };
   } catch (error) {
   if (error.name === 'AbortError') {
     console.log('请求已取消');
@@ -88,6 +102,7 @@ export const streamWithGLM = async (messages, onChunk) => {
     console.error("API调用失败:", error);
     onChunk("抱歉，我暂时无法处理您的请求。", 'error');
   }
+  return { tokens: tokenStats };
 } finally {
     if (cancelTokenSources.glm === abortController) {
       cancelTokenSources.glm = null;
@@ -97,6 +112,8 @@ export const streamWithGLM = async (messages, onChunk) => {
 
 // DeepSeek 流式调用
 export const streamWithDeepSeek = async (messages, model, onChunk) => {
+  let tokenStats = { input: 0, output: 0, total: 0 };
+  
   try {
     // 创建AbortController
     cancelTokenSources.deepseek = new AbortController();
@@ -113,12 +130,23 @@ export const streamWithDeepSeek = async (messages, model, onChunk) => {
     });
 
     for await (const chunk of stream) {
+      // 收集Token统计信息
+      if (chunk.usage) {
+        tokenStats = {
+          input: chunk.usage.prompt_tokens || 0,
+          output: chunk.usage.completion_tokens || 0,
+          total: chunk.usage.total_tokens || 0
+        };
+      }
+      
       if (model === 'deepseek-reasoner' && chunk.choices[0].delta.reasoning_content) {
         onChunk(chunk.choices[0].delta.reasoning_content, 'thinking');
       } else if (chunk.choices[0].delta.content) {
         onChunk(chunk.choices[0].delta.content, 'answer');
       }
     }
+    
+    return { tokens: tokenStats };
   } catch (error) {
   if (error.name === 'AbortError') {
     console.log('请求已取消');
@@ -126,6 +154,7 @@ export const streamWithDeepSeek = async (messages, model, onChunk) => {
     console.error("API调用失败:", error);
     onChunk("抱歉，我暂时无法处理您的请求。", 'error');
   }
+  return { tokens: tokenStats };
 } finally {
     cancelTokenSources.deepseek = null;
   }
@@ -159,8 +188,8 @@ export const summarizeTitle = async (messages) => {
 // 统一流式调用方法
 export const chatWithAI = async (messages, model, onChunk) => {
   if (model.startsWith('glm-')) {
-    await streamWithGLM(messages, onChunk);
+    return await streamWithGLM(messages, onChunk);
   } else {
-    await streamWithDeepSeek(messages, model, onChunk);
+    return await streamWithDeepSeek(messages, model, onChunk);
   }
 };
