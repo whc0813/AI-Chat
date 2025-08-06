@@ -63,10 +63,6 @@
           <h1 class="welcome-title">新对话</h1>
           <p class="welcome-description">询问任何问题</p>
           <div class="example-questions">
-            <div class="example-item" @click="sendExampleQuestion('数学：的含义解析')">
-              <span class="example-icon">📊</span>
-              <span class="example-text">数学：的含义解析</span>
-            </div>
             <div class="example-item" @click="sendExampleQuestion('初次见面问候')">
               <span class="example-icon">👋</span>
               <span class="example-text">初次见面问候</span>
@@ -91,8 +87,10 @@
             <div class="plain-content" v-if="message.role === 'user'" v-text="message.content"></div>
             <div class="plain-content" v-else v-html="renderMarkdown(message.content)"></div>
         </div>
-        <div v-if="message.role === 'user'" class="plain-content" v-text="message.content"></div>
-        <div v-else class="plain-content" v-html="renderMarkdown(message.content)"></div>
+        <div v-else>
+            <div v-if="message.role === 'user'" class="plain-content" v-text="message.content"></div>
+            <div v-else class="plain-content" v-html="renderMarkdown(message.content)"></div>
+        </div>
 
         <div v-if="message.attachment" class="message-attachment-info" @click="openFilePreview(message.attachment)">
             <span class="file-icon">{{ getFileIcon(message.attachment.name) }}</span>
@@ -278,12 +276,17 @@
 
 <script>
 import { chatWithAI, cancelAllRequests } from '../api/chat';
-import { marked } from 'marked';
+import MarkdownIt from 'markdown-it';
+// 使用MathJax3插件
+import markdownItMathjax3 from 'markdown-it-mathjax3';
+
+// 调试：检查插件是否正确导入
+console.log('markdownItMathjax3 type:', typeof markdownItMathjax3);
+console.log('markdownItMathjax3:', markdownItMathjax3);
 import hljs from 'highlight.js';
 // 移除默认主题CSS，使用自定义语法高亮样式
 // import 'highlight.js/styles/base16/dracula.css';
-import katex from 'katex';
-import 'katex/dist/katex.min.css';
+// 使用CDN版本的KaTeX CSS，移除本地导入避免冲突
 import mammoth from 'mammoth';
 import * as XLSX from 'xlsx';
 
@@ -303,6 +306,27 @@ export default {
     }
   },
   data() {
+    // 初始化 markdown-it 实例
+    const md = new MarkdownIt({
+      html: true,
+      linkify: true,
+      typographer: true,
+      breaks: true,
+      highlight: function (str, lang) {
+        if (lang && hljs.getLanguage(lang)) {
+          try {
+            return hljs.highlight(str, { language: lang }).value;
+          } catch (err) {
+            console.warn('语法高亮失败:', err);
+          }
+        }
+        return hljs.highlightAuto(str).value;
+      }
+    });
+
+    // 配置 markdown-it-mathjax3 插件
+    md.use(markdownItMathjax3);
+
     return {
       userInput: '',
       selectedModel: this.currentModel,
@@ -322,6 +346,7 @@ export default {
       isDarkMode: false,
       debounceTimer: null,
       titleClickTimer: null,
+      mathJaxDebounceTimer: null,
       isRenaming: false,
       newTitle: '',
       selectedFile: null,
@@ -336,6 +361,25 @@ export default {
       showHtmlPreviewModal: false,
       htmlPreviewContent: '',
       showModelDropdown: false,
+      // markdown-it 实例（包含mathjax）
+      markdownRenderer: md,
+      // markdown-it 实例（不包含mathjax）
+      markdownRendererWithoutMath: new MarkdownIt({
+        html: true,
+        linkify: true,
+        typographer: true,
+        breaks: true,
+        highlight: function (str, lang) {
+          if (lang && hljs.getLanguage(lang)) {
+            try {
+              return hljs.highlight(str, { language: lang }).value;
+            } catch (err) {
+              console.warn('语法高亮失败:', err);
+            }
+          }
+          return hljs.highlightAuto(str).value;
+        }
+      }),
 
       availableModels: [
         {
@@ -366,15 +410,23 @@ export default {
     }
   },
   watch: {
-    messages() {
-      this.$nextTick(() => {
-        const container = this.$refs.chatMessages;
-        if (container) {
-          container.scrollTop = container.scrollHeight;
-        }
-        // 重新应用语法高亮
-        this.applyCodeHighlighting();
-      });
+    messages: {
+      handler() {
+        this.$nextTick(() => {
+          const container = this.$refs.chatMessages;
+          if (container) {
+            container.scrollTop = container.scrollHeight;
+          }
+          // 只在非流式状态下应用语法高亮和数学公式渲染，避免频繁调用导致无限循环
+          if (!this.isStreaming) {
+            this.applyCodeHighlighting();
+            this.triggerMathJaxRender();
+          }
+        });
+      },
+      // 添加深度监听配置，但使用immediate: false避免初始化时触发
+      deep: false,
+      immediate: false
     }
   },
   created() {
@@ -383,37 +435,29 @@ export default {
   },
   beforeDestroy() {
     document.removeEventListener('click', this.handleClickOutside);
+    // 清理定时器
+    if (this.mathJaxDebounceTimer) {
+      clearTimeout(this.mathJaxDebounceTimer);
+    }
   },
   mounted() {
-    this.initSpeechRecognition();
-    // 添加点击外部关闭下拉框的事件监听
-    document.addEventListener('click', this.handleClickOutside);
-    marked.setOptions({
-      breaks: true,
-      gfm: true,
-       highlight: (code, lang) => {
-        const validLang = lang && hljs.getLanguage(lang) ? lang : 'plaintext';
-        try {
-            const result = hljs.highlight(code, { language: validLang, ignoreIllegals: true });
-            console.log('Highlight result for', validLang, ':', result.value.substring(0, 200));
-            // 手动添加基础样式类
-            return `<span class="hljs">${result.value}</span>`;
-        } catch (e) {
-            console.error('Code highlighting error:', e);
-            return `<span class="hljs">${code}</span>`;
-        }
-      }
-    });
-    this.$nextTick(() => {
-      this.setupCopyButtons();
-      this.applyCodeHighlighting();
-    });
-    document.documentElement.classList.toggle('dark-mode', this.isDarkMode);
-  },
+        this.initSpeechRecognition();
+        // 添加点击外部关闭下拉框的事件监听
+        document.addEventListener('click', this.handleClickOutside);
+        this.$nextTick(() => {
+            this.setupCopyButtons();
+            this.applyCodeHighlighting();
+            // 初始化时渲染数学公式
+            this.triggerMathJaxRender();
+        });
+        document.documentElement.classList.toggle('dark-mode', this.isDarkMode);
+    },
   methods: {
     sendExampleQuestion(question) {
       this.userInput = question;
     },
+    
+
     
     isLastAssistantMessage(index) {
       // 找到最后一条助手消息的索引
@@ -424,117 +468,30 @@ export default {
     renderMarkdown(content) {
         if (!content) return '';
         try {
-            const katexBlocks = [];
-            const codeBlocks = [];
+            // 预处理：确保LaTeX语法被正确识别
+            let processedContent = content
+                // 确保块级公式前后有空行
+                .replace(/(\n|^)(\$\$[\s\S]*?\$\$)(\n|$)/g, '\n\n$2\n\n')
+                // 替换 [ ... ] 为 \[ ... \]
+                .replace(/\[\s*([\s\S]*?)\s*\]/g, (_, formula) => {
+                    return `\\[${formula.trim()}\\]`;
+                })
+                // 清理多余的空行
+                .replace(/\n{3,}/g, '\n\n');
             
-            // 先保护代码块，避免其中的LaTeX语法被误识别为数学公式
-            content = content.replace(/```[\s\S]*?```/g, (match) => {
-                const key = `CODE_BLOCK_${codeBlocks.length}`;
-                codeBlocks.push({ key, content: match });
-                return key;
+            // 使用 markdown-it + markdown-it-mathjax3 渲染
+            let html = this.markdownRenderer.render(processedContent);
+            
+            // 应用自定义代码块样式
+            html = html.replace(/<pre><code class="language-(\w+)"([^>]*)>([\s\S]*?)<\/code><\/pre>/g, (match, lang, attrs, code) => {
+                return this._wrapCodeBlock(lang, code);
+            }).replace(/<pre><code([^>]*)>([\s\S]*?)<\/code><\/pre>/g, (match, attrs, code) => {
+                return this._wrapCodeBlock('plaintext', code);
             });
             
-            // 保护行内代码
-            content = content.replace(/`[^`\n]+?`/g, (match) => {
-                const key = `CODE_BLOCK_${codeBlocks.length}`;
-                codeBlocks.push({ key, content: match });
-                return key;
-            });
+            // MathJax渲染将在messages watcher中统一处理
             
-            // 处理块级数学公式 $$...$$, \[...\] - 改进的正则表达式
-            content = content.replace(/(\$\$|\\\[)([\s\S]*?)(\$\$|\\\])/g, (match, start, formula, end) => {
-                if (formula.trim()) {
-                    const key = `KATEX_BLOCK_${katexBlocks.length}`;
-                    katexBlocks.push({ key, content: formula.trim(), block: true, original: match });
-                    return key;
-                }
-                return match;
-            });
-            
-            // 处理行内数学公式 $...$, \(...\) - 改进的正则表达式，避免误匹配
-            content = content.replace(/(?<!\\)(\$)([^\$\n]+?)(\$)(?!\$)/g, (match, start, formula, end) => {
-                // 确保公式内容不为空且不包含换行，并且不是货币符号
-                if (formula.trim() && !formula.includes('\n') && !/^\d+(\.\d+)?$/.test(formula.trim())) {
-                    const key = `KATEX_BLOCK_${katexBlocks.length}`;
-                    katexBlocks.push({ key, content: formula.trim(), block: false, original: match });
-                    return key;
-                }
-                return match;
-            });
-            
-            // 处理 \(...\) 行内公式
-            content = content.replace(/\\\(([\s\S]*?)\\\)/g, (match, formula) => {
-                if (formula.trim()) {
-                    const key = `KATEX_BLOCK_${katexBlocks.length}`;
-                    katexBlocks.push({ key, content: formula.trim(), block: false, original: match });
-                    return key;
-                }
-                return match;
-            });
-            
-            // 恢复代码块
-            codeBlocks.forEach(({ key, content: code }) => {
-                content = content.replace(key, code);
-            });
-
-            let html = marked(content);
-            
-            html = html.replace(/<pre><code class="language-(\w+)">([\s\S]*?)<\/code><\/pre>/g, (_, lang, code) => this._wrapCodeBlock(lang, code))
-                     .replace(/<pre><code>([\s\S]*?)<\/code><\/pre>/g, (_, code) => this._wrapCodeBlock('plaintext', code));
-
-            // 渲染KaTeX公式
-            katexBlocks.forEach(({ key, content: formula, block, original }) => {
-                try {
-                    const renderedKatex = katex.renderToString(formula, {
-                        throwOnError: false,
-                        displayMode: block,
-                        strict: false,
-                        trust: (context) => {
-                            // 允许一些安全的命令
-                            return ['\\color', '\\textcolor', '\\colorbox', '\\fcolorbox'].includes(context.command);
-                        },
-                        macros: {
-                            // 添加一些常用的数学宏
-                            "\\RR": "\\mathbb{R}",
-                            "\\NN": "\\mathbb{N}",
-                            "\\ZZ": "\\mathbb{Z}",
-                            "\\QQ": "\\mathbb{Q}",
-                            "\\CC": "\\mathbb{C}",
-                            "\\det": "\\operatorname{det}",
-                            "\\sgn": "\\operatorname{sgn}"
-                        },
-                        fleqn: false,
-                        leqno: false,
-                        colorIsTextColor: false,
-                        maxSize: 50,
-                        maxExpand: 1000,
-                        globalGroup: false
-                    });
-                    
-                    // 为块级公式添加容器样式
-                    const wrappedKatex = block 
-                        ? `<div class="katex-display-wrapper">${renderedKatex}</div>`
-                        : `<span class="katex-inline-wrapper">${renderedKatex}</span>`;
-                    
-                    html = html.replace(key, wrappedKatex);
-                } catch(e) {
-                    console.warn("KaTeX rendering failed for formula:", formula, "Error:", e.message);
-                    // 渲染失败时，显示带有错误提示的原始公式
-                    const errorDisplay = block 
-                        ? `<div class="formula-error-block" title="渲染错误: ${e.message}">${original}</div>`
-                        : `<span class="formula-error-inline" title="渲染错误: ${e.message}">${original}</span>`;
-                    html = html.replace(key, errorDisplay);
-                }
-            });
-            
-            // 确保所有未处理的占位符都被恢复为原始内容
-            katexBlocks.forEach(({ key, original }) => {
-                if (html.includes(key)) {
-                    html = html.replace(new RegExp(key, 'g'), `<span class="formula-fallback">${original}</span>`);
-                }
-            });
             return html;
-
         } catch (error) {
             console.error('Markdown rendering error:', error);
             return '<div class="render-error">内容渲染失败</div>';
@@ -543,42 +500,8 @@ export default {
     renderMarkdownWithoutMath(content) {
         if (!content) return '';
         try {
-            const codeBlocks = [];
-            
-            // 保护代码块，避免其中的内容被误处理
-            content = content.replace(/```[\s\S]*?```/g, (match) => {
-                const key = `CODE_BLOCK_${codeBlocks.length}`;
-                codeBlocks.push({ key, content: match });
-                return key;
-            });
-            
-            // 保护行内代码
-            content = content.replace(/`[^`\n]+?`/g, (match) => {
-                const key = `CODE_BLOCK_${codeBlocks.length}`;
-                codeBlocks.push({ key, content: match });
-                return key;
-            });
-            
-            // 使用marked渲染Markdown（不处理数学公式）
-            let html = marked(content, {
-                highlight: function(code, lang) {
-                    if (lang && hljs.getLanguage(lang)) {
-                        try {
-                            return hljs.highlight(code, { language: lang }).value;
-                        } catch (err) {
-                            console.warn('语法高亮失败:', err);
-                        }
-                    }
-                    return hljs.highlightAuto(code).value;
-                },
-                breaks: true,
-                gfm: true
-            });
-            
-            // 恢复代码块
-            codeBlocks.forEach(({ key, content }) => {
-                html = html.replace(new RegExp(key, 'g'), content);
-            });
+            // 使用不包含katex的markdown-it实例渲染
+            let html = this.markdownRendererWithoutMath.render(content);
             
             // 应用自定义代码块样式
             html = html.replace(/<pre><code class="language-(\w+)">([\s\S]*?)<\/code><\/pre>/g, (_, lang, code) => this._wrapCodeBlock(lang, code))
@@ -666,11 +589,14 @@ export default {
       
       const codeBlocks = this.$el.querySelectorAll(selector);
       codeBlocks.forEach(block => {
-        if (!block.classList.contains('hljs')) {
+        // 检查是否已经被highlight.js处理过，避免重复处理
+        if (!block.classList.contains('hljs') || !block.dataset.highlighted) {
           block.classList.add('hljs');
+          // 重新应用highlight.js
+          hljs.highlightElement(block);
+          // 标记为已处理，避免重复高亮
+          block.dataset.highlighted = 'true';
         }
-        // 重新应用highlight.js
-        hljs.highlightElement(block);
       });
     },
 
@@ -936,20 +862,25 @@ export default {
         }
         this.$emit('send-message', aiMessage);
         
-        // 确保新添加的消息应用语法高亮
+        // 确保新添加的消息应用语法高亮和数学公式渲染
         this.$nextTick(() => {
             // 只对最后一条消息应用语法高亮，避免性能问题
             const lastMessage = this.$el.querySelector('.message.assistant:last-child');
             if (lastMessage) {
                 const codeBlocks = lastMessage.querySelectorAll('pre code');
                 codeBlocks.forEach(block => {
-                    if (!block.classList.contains('hljs')) {
+                    // 检查是否已经被highlight.js处理过，避免重复处理
+                    if (!block.classList.contains('hljs') || !block.dataset.highlighted) {
                         block.classList.add('hljs');
+                        hljs.highlightElement(block);
+                        // 标记为已处理，避免重复高亮
+                        block.dataset.highlighted = 'true';
                     }
-                    hljs.highlightElement(block);
                 });
             }
             this.setupCopyButtons();
+            // 流式对话结束后渲染数学公式
+            this.triggerMathJaxRender();
         });
         
         // 保留文件内容以便后续预览
@@ -1356,6 +1287,39 @@ export default {
               const seconds = Math.floor((milliseconds % 60000) / 1000);
               return `${minutes}m ${seconds}s`;
           }
+      },
+      
+      // 应用代码高亮（优化版本，避免重复处理）
+      applyCodeHighlighting() {
+          this.$nextTick(() => {
+              const codeBlocks = this.$el.querySelectorAll('pre code');
+              codeBlocks.forEach(block => {
+                  // 检查是否已经被highlight.js处理过，避免重复处理
+                  if (!block.classList.contains('hljs') || !block.dataset.highlighted) {
+                      block.classList.add('hljs');
+                      hljs.highlightElement(block);
+                      // 标记为已处理，避免重复高亮
+                      block.dataset.highlighted = 'true';
+                  }
+              });
+          });
+      },
+      
+      // 触发MathJax重新渲染（添加防抖机制）
+      triggerMathJaxRender() {
+          // 清除之前的防抖定时器
+          if (this.mathJaxDebounceTimer) {
+              clearTimeout(this.mathJaxDebounceTimer);
+          }
+          
+          // 设置防抖定时器，避免频繁调用
+          this.mathJaxDebounceTimer = setTimeout(() => {
+              if (window.MathJax && window.MathJax.typesetPromise) {
+                  window.MathJax.typesetPromise().catch((err) => {
+                      console.warn('MathJax渲染失败:', err);
+                  });
+              }
+          }, 100); // 100ms防抖延迟
       }
 
   },
@@ -2862,38 +2826,14 @@ button.active::before {
 
 
 
-/* KaTeX 数学公式样式优化 */
+/* KaTeX 数学公式基础样式 */
 :deep(.katex) {
-  font-size: 1.1em !important;
-  color: var(--text-color) !important;
+  font-size: 1.1em;
 }
 
 :deep(.katex-display) {
-  margin: 1em 0 !important;
-  text-align: center !important;
-}
-
-:deep(.katex .base) {
-  color: var(--text-color) !important;
-}
-
-:deep(.katex .mord) {
-  color: var(--text-color) !important;
-}
-
-:deep(.katex .mbin),
-:deep(.katex .mrel),
-:deep(.katex .mop) {
-  color: var(--primary-color) !important;
-}
-
-:deep(.katex .mopen),
-:deep(.katex .mclose) {
-  color: var(--text-color) !important;
-}
-
-:deep(.katex .mpunct) {
-  color: var(--text-color) !important;
+  margin: 1em 0;
+  text-align: center;
 }
 
 /* 公式错误样式 */
@@ -4262,13 +4202,16 @@ button[disabled]:hover {
   font-size: 0.9em;
 }
 
-/* 深色模式下的数学公式样式 */
-[data-theme="dark"] .katex {
-  color: #e2e8f0 !important;
+/* KaTeX 数学公式基础样式 */
+.katex {
+  font-size: 1.1em;
+  line-height: 1.2;
 }
 
-[data-theme="dark"] .katex .base {
-  color: #e2e8f0 !important;
+.katex-display {
+  margin: 1em 0;
+  text-align: center;
+  overflow-x: auto;
 }
 
 /* 响应式数学公式 */

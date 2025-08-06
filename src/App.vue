@@ -60,13 +60,19 @@ export default {
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       }],
-      currentConversationIndex: 0
+      currentConversationIndex: 0,
+      streamingTitle: '' // 添加临时的流式标题变量
     };
   },
   // ... computed, watch, mounted, methods 等部分与上一轮回复中的代码相同，无需修改 ...
   computed: {
     currentConversation() {
-      return this.conversations[this.currentConversationIndex] || {};
+      const conv = this.conversations[this.currentConversationIndex] || {};
+      // 如果有流式标题正在生成，使用临时标题
+      if (this.streamingTitle) {
+        return { ...conv, title: this.streamingTitle };
+      }
+      return conv;
     },
     currentMessages() {
       return this.currentConversation.messages || [];
@@ -99,17 +105,16 @@ export default {
   },
   methods: {
     handleUpdateTitleStream(streamingTitle) {
-      const currentConv = this.conversations[this.currentConversationIndex];
-      if(currentConv) {
-        currentConv.title = streamingTitle;
-        currentConv.updatedAt = new Date().toISOString();
-      }
+      // 使用临时变量存储流式标题，避免触发conversations的deep watcher
+      this.streamingTitle = streamingTitle;
     },
     handleUpdateTitle(finalTitle) {
       const currentConv = this.conversations[this.currentConversationIndex];
       if(currentConv) {
         currentConv.title = finalTitle;
         currentConv.updatedAt = new Date().toISOString();
+        // 清空临时的流式标题
+        this.streamingTitle = '';
         this.$forceUpdate();
       }
     },
