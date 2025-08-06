@@ -146,9 +146,13 @@
             <span>思考过程：</span>
             <span class="toggle-icon">{{ isCurrentThinkingExpanded ? '▼' : '▶' }}</span>
           </div>
-          <div class="thinking-text" v-if="isCurrentThinkingExpanded" v-html="renderMarkdown(currentThinking)"></div>
+          <div class="thinking-text" v-if="isCurrentThinkingExpanded">
+            <pre class="streaming-text">{{ currentThinking }}</pre>
+          </div>
         </div>
-        <div v-if="currentAnswer" class="plain-content" v-html="renderMarkdown(currentAnswer)"></div>
+        <div v-if="currentAnswer" class="plain-content">
+          <pre class="streaming-text">{{ currentAnswer }}</pre>
+        </div>
         <div v-if="!currentAnswer && !currentThinking" class="loading-indicator">
           正在生成回复...
         </div>
@@ -277,12 +281,6 @@
 <script>
 import { chatWithAI, cancelAllRequests } from '../api/chat';
 import MarkdownIt from 'markdown-it';
-// 使用MathJax3插件
-import markdownItMathjax3 from 'markdown-it-mathjax3';
-
-// 调试：检查插件是否正确导入
-console.log('markdownItMathjax3 type:', typeof markdownItMathjax3);
-console.log('markdownItMathjax3:', markdownItMathjax3);
 import hljs from 'highlight.js';
 // 移除默认主题CSS，使用自定义语法高亮样式
 // import 'highlight.js/styles/base16/dracula.css';
@@ -324,9 +322,6 @@ export default {
       }
     });
 
-    // 配置 markdown-it-mathjax3 插件
-    md.use(markdownItMathjax3);
-
     return {
       userInput: '',
       selectedModel: this.currentModel,
@@ -338,6 +333,7 @@ export default {
       isStreaming: false,
       currentThinking: '',
       currentAnswer: '',
+      streamingUpdateTimer: null,
       expandedThinking: {},
       isCurrentThinkingExpanded: true,
       isGenerating: false,
@@ -346,7 +342,6 @@ export default {
       isDarkMode: false,
       debounceTimer: null,
       titleClickTimer: null,
-      mathJaxDebounceTimer: null,
       isRenaming: false,
       newTitle: '',
       selectedFile: null,
@@ -361,25 +356,8 @@ export default {
       showHtmlPreviewModal: false,
       htmlPreviewContent: '',
       showModelDropdown: false,
-      // markdown-it 实例（包含mathjax）
+      // markdown-it 实例
       markdownRenderer: md,
-      // markdown-it 实例（不包含mathjax）
-      markdownRendererWithoutMath: new MarkdownIt({
-        html: true,
-        linkify: true,
-        typographer: true,
-        breaks: true,
-        highlight: function (str, lang) {
-          if (lang && hljs.getLanguage(lang)) {
-            try {
-              return hljs.highlight(str, { language: lang }).value;
-            } catch (err) {
-              console.warn('语法高亮失败:', err);
-            }
-          }
-          return hljs.highlightAuto(str).value;
-        }
-      }),
 
       availableModels: [
         {
@@ -411,20 +389,22 @@ export default {
   },
   watch: {
     messages: {
-      handler() {
-        this.$nextTick(() => {
-          const container = this.$refs.chatMessages;
-          if (container) {
-            container.scrollTop = container.scrollHeight;
-          }
-          // 只在非流式状态下应用语法高亮和数学公式渲染，避免频繁调用导致无限循环
-          if (!this.isStreaming) {
-            this.applyCodeHighlighting();
-            this.triggerMathJaxRender();
-          }
-        });
+      handler(newMessages, oldMessages) {
+        // 避免在流式状态下或初始化时触发
+        if (this.isStreaming || this.isGenerating) {
+          return;
+        }
+        
+        // 只在消息数量真正变化时处理
+        if (!oldMessages || newMessages.length !== oldMessages.length) {
+          this.$nextTick(() => {
+            const container = this.$refs.chatMessages;
+            if (container) {
+              container.scrollTop = container.scrollHeight;
+            }
+          });
+        }
       },
-      // 添加深度监听配置，但使用immediate: false避免初始化时触发
       deep: false,
       immediate: false
     }
@@ -436,8 +416,8 @@ export default {
   beforeDestroy() {
     document.removeEventListener('click', this.handleClickOutside);
     // 清理定时器
-    if (this.mathJaxDebounceTimer) {
-      clearTimeout(this.mathJaxDebounceTimer);
+    if (this.streamingUpdateTimer) {
+      clearTimeout(this.streamingUpdateTimer);
     }
   },
   mounted() {
@@ -447,8 +427,6 @@ export default {
         this.$nextTick(() => {
             this.setupCopyButtons();
             this.applyCodeHighlighting();
-            // 初始化时渲染数学公式
-            this.triggerMathJaxRender();
         });
         document.documentElement.classList.toggle('dark-mode', this.isDarkMode);
     },
@@ -468,19 +446,8 @@ export default {
     renderMarkdown(content) {
         if (!content) return '';
         try {
-            // 预处理：确保LaTeX语法被正确识别
-            let processedContent = content
-                // 确保块级公式前后有空行
-                .replace(/(\n|^)(\$\$[\s\S]*?\$\$)(\n|$)/g, '\n\n$2\n\n')
-                // 替换 [ ... ] 为 \[ ... \]
-                .replace(/\[\s*([\s\S]*?)\s*\]/g, (_, formula) => {
-                    return `\\[${formula.trim()}\\]`;
-                })
-                // 清理多余的空行
-                .replace(/\n{3,}/g, '\n\n');
-            
-            // 使用 markdown-it + markdown-it-mathjax3 渲染
-            let html = this.markdownRenderer.render(processedContent);
+            // 使用 markdown-it 渲染
+            let html = this.markdownRenderer.render(content);
             
             // 应用自定义代码块样式
             html = html.replace(/<pre><code class="language-(\w+)"([^>]*)>([\s\S]*?)<\/code><\/pre>/g, (match, lang, attrs, code) => {
@@ -489,27 +456,9 @@ export default {
                 return this._wrapCodeBlock('plaintext', code);
             });
             
-            // MathJax渲染将在messages watcher中统一处理
-            
             return html;
         } catch (error) {
             console.error('Markdown rendering error:', error);
-            return '<div class="render-error">内容渲染失败</div>';
-        }
-    },
-    renderMarkdownWithoutMath(content) {
-        if (!content) return '';
-        try {
-            // 使用不包含katex的markdown-it实例渲染
-            let html = this.markdownRendererWithoutMath.render(content);
-            
-            // 应用自定义代码块样式
-            html = html.replace(/<pre><code class="language-(\w+)">([\s\S]*?)<\/code><\/pre>/g, (_, lang, code) => this._wrapCodeBlock(lang, code))
-                     .replace(/<pre><code>([\s\S]*?)<\/code><\/pre>/g, (_, code) => this._wrapCodeBlock('plaintext', code));
-            
-            return html;
-        } catch (error) {
-            console.error('Markdown rendering error (without math):', error);
             return '<div class="render-error">内容渲染失败</div>';
         }
     },
@@ -579,26 +528,7 @@ export default {
         }
       });
     },
-    applyCodeHighlighting(streamingOnly = false) {
-      // 手动对代码块应用语法高亮
-      let selector = 'pre code';
-      if (streamingOnly) {
-        // 流式输出时只处理当前流式消息中的代码块
-        selector = '.message.assistant:last-child pre code';
-      }
-      
-      const codeBlocks = this.$el.querySelectorAll(selector);
-      codeBlocks.forEach(block => {
-        // 检查是否已经被highlight.js处理过，避免重复处理
-        if (!block.classList.contains('hljs') || !block.dataset.highlighted) {
-          block.classList.add('hljs');
-          // 重新应用highlight.js
-          hljs.highlightElement(block);
-          // 标记为已处理，避免重复高亮
-          block.dataset.highlighted = 'true';
-        }
-      });
-    },
+
 
     triggerFileUpload() {
         this.$refs.fileInput.click();
@@ -686,11 +616,21 @@ export default {
                 messagesForAPI,
                 this.selectedModel,
                 (content, type) => {
+                    // 使用防抖机制减少频繁更新
+                    if (this.streamingUpdateTimer) {
+                        clearTimeout(this.streamingUpdateTimer);
+                    }
+                    
                     if (type === 'thinking') {
                         this.currentThinking += content;
                     } else {
                         this.currentAnswer += content;
                     }
+                    
+                    // 延迟更新，减少响应式触发频率
+                    this.streamingUpdateTimer = setTimeout(() => {
+                        this.$forceUpdate();
+                    }, 50);
                 }
             );
             
@@ -717,6 +657,11 @@ export default {
             this.isGenerating = false;
             this.$emit('generating-changed', false);
             this.isStreaming = false;
+            // 清理流式更新定时器
+            if (this.streamingUpdateTimer) {
+                clearTimeout(this.streamingUpdateTimer);
+                this.streamingUpdateTimer = null;
+            }
         }
     },
     formatMessagesForAPI(messages) {
@@ -809,11 +754,21 @@ export default {
                     messagesForAPI,
                     this.selectedModel,
                     (content, type) => {
+                        // 使用防抖机制减少频繁更新
+                        if (this.streamingUpdateTimer) {
+                            clearTimeout(this.streamingUpdateTimer);
+                        }
+                        
                         if (type === 'thinking') {
                             this.currentThinking += content;
                         } else {
                             this.currentAnswer += content;
                         }
+                        
+                        // 延迟更新，减少响应式触发频率
+                        this.streamingUpdateTimer = setTimeout(() => {
+                            this.$forceUpdate();
+                        }, 50);
                     }
                 );
                 
@@ -836,6 +791,11 @@ export default {
                 this.isGenerating = false;
                 this.$emit('generating-changed', false);
                 this.isStreaming = false;
+                // 清理流式更新定时器
+                if (this.streamingUpdateTimer) {
+                    clearTimeout(this.streamingUpdateTimer);
+                    this.streamingUpdateTimer = null;
+                }
             }
         }
     },
@@ -862,26 +822,11 @@ export default {
         }
         this.$emit('send-message', aiMessage);
         
-        // 确保新添加的消息应用语法高亮和数学公式渲染
-        this.$nextTick(() => {
-            // 只对最后一条消息应用语法高亮，避免性能问题
-            const lastMessage = this.$el.querySelector('.message.assistant:last-child');
-            if (lastMessage) {
-                const codeBlocks = lastMessage.querySelectorAll('pre code');
-                codeBlocks.forEach(block => {
-                    // 检查是否已经被highlight.js处理过，避免重复处理
-                    if (!block.classList.contains('hljs') || !block.dataset.highlighted) {
-                        block.classList.add('hljs');
-                        hljs.highlightElement(block);
-                        // 标记为已处理，避免重复高亮
-                        block.dataset.highlighted = 'true';
-                    }
-                });
-            }
+        // 延迟处理，避免与messages watcher冲突
+        setTimeout(() => {
             this.setupCopyButtons();
-            // 流式对话结束后渲染数学公式
-            this.triggerMathJaxRender();
-        });
+            this.applyCodeHighlighting();
+        }, 100);
         
         // 保留文件内容以便后续预览
         // const lastUserMessage = this.messages.filter(m => m.role === 'user').pop();
@@ -1291,35 +1236,17 @@ export default {
       
       // 应用代码高亮（优化版本，避免重复处理）
       applyCodeHighlighting() {
-          this.$nextTick(() => {
-              const codeBlocks = this.$el.querySelectorAll('pre code');
-              codeBlocks.forEach(block => {
-                  // 检查是否已经被highlight.js处理过，避免重复处理
-                  if (!block.classList.contains('hljs') || !block.dataset.highlighted) {
-                      block.classList.add('hljs');
-                      hljs.highlightElement(block);
-                      // 标记为已处理，避免重复高亮
-                      block.dataset.highlighted = 'true';
-                  }
-              });
-          });
-      },
-      
-      // 触发MathJax重新渲染（添加防抖机制）
-      triggerMathJaxRender() {
-          // 清除之前的防抖定时器
-          if (this.mathJaxDebounceTimer) {
-              clearTimeout(this.mathJaxDebounceTimer);
-          }
-          
-          // 设置防抖定时器，避免频繁调用
-          this.mathJaxDebounceTimer = setTimeout(() => {
-              if (window.MathJax && window.MathJax.typesetPromise) {
-                  window.MathJax.typesetPromise().catch((err) => {
-                      console.warn('MathJax渲染失败:', err);
-                  });
+          // 移除$nextTick，直接处理避免递归
+          const codeBlocks = this.$el.querySelectorAll('pre code');
+          codeBlocks.forEach(block => {
+              // 检查是否已经被highlight.js处理过，避免重复处理
+              if (!block.classList.contains('hljs') || !block.dataset.highlighted) {
+                  block.classList.add('hljs');
+                  hljs.highlightElement(block);
+                  // 标记为已处理，避免重复高亮
+                  block.dataset.highlighted = 'true';
               }
-          }, 100); // 100ms防抖延迟
+          });
       }
 
   },
@@ -4143,6 +4070,20 @@ button[disabled]:hover {
   color: #e6c07b !important;
 }
 
+/* 流式文本样式 */
+.streaming-text {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: 1.6;
+  margin: 0;
+  padding: 0;
+  background: none;
+  border: none;
+  color: inherit;
+}
+
 /* 数学公式样式优化 */
 .katex-display-wrapper {
   margin: 1.5em 0;
@@ -4150,98 +4091,5 @@ button[disabled]:hover {
   overflow-x: auto;
   overflow-y: hidden;
   padding: 0.5em 0;
-}
-
-.katex-inline-wrapper {
-  display: inline;
-  margin: 0 0.1em;
-}
-
-.katex-display {
-  margin: 0 !important;
-  text-align: center;
-}
-
-.katex {
-  font-size: 1.1em;
-  color: var(--text-color) !important;
-}
-
-/* 数学公式错误显示样式 */
-.formula-error-block {
-  background: rgba(239, 68, 68, 0.1);
-  border: 1px solid rgba(239, 68, 68, 0.3);
-  border-radius: 8px;
-  padding: 1em;
-  margin: 1em 0;
-  color: #ef4444;
-  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
-  font-size: 0.9em;
-  cursor: help;
-  text-align: center;
-}
-
-.formula-error-inline {
-  background: rgba(239, 68, 68, 0.1);
-  border: 1px solid rgba(239, 68, 68, 0.3);
-  border-radius: 4px;
-  padding: 0.2em 0.4em;
-  color: #ef4444;
-  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
-  font-size: 0.9em;
-  cursor: help;
-}
-
-.formula-fallback {
-  background: rgba(251, 191, 36, 0.1);
-  border: 1px solid rgba(251, 191, 36, 0.3);
-  border-radius: 4px;
-  padding: 0.2em 0.4em;
-  color: #f59e0b;
-  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
-  font-size: 0.9em;
-}
-
-/* KaTeX 数学公式基础样式 */
-.katex {
-  font-size: 1.1em;
-  line-height: 1.2;
-}
-
-.katex-display {
-  margin: 1em 0;
-  text-align: center;
-  overflow-x: auto;
-}
-
-/* 响应式数学公式 */
-@media (max-width: 768px) {
-  .katex-display-wrapper {
-    margin: 1em 0;
-    padding: 0.3em 0;
-  }
-  
-  .katex {
-    font-size: 1em;
-  }
-  
-  .katex-display {
-    font-size: 1.1em !important;
-  }
-}
-
-@media (max-width: 480px) {
-  .katex {
-    font-size: 0.9em;
-  }
-  
-  .katex-display {
-    font-size: 1em !important;
-  }
-  
-  .katex-display-wrapper {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-  }
 }
 </style>
