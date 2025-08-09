@@ -26,7 +26,6 @@
           @clear-chat="clearCurrentChat"
           @model-changed="updateModel"
           @theme-changed="handleThemeChange"
-          @update-title-stream="handleUpdateTitleStream"
           @update-title="handleUpdateTitle"
           @toggle-sidebar="toggleSidebar"
           @generating-changed="handleGeneratingChanged"
@@ -61,24 +60,25 @@ export default {
         updatedAt: new Date().toISOString()
       }],
       currentConversationIndex: 0,
-      streamingTitle: '' // 添加临时的流式标题变量
+      saveTimer: null
     };
   },
   // ... computed, watch, mounted, methods 等部分与上一轮回复中的代码相同，无需修改 ...
   computed: {
     currentConversation() {
-      const conv = this.conversations[this.currentConversationIndex] || {};
-      // 如果有流式标题正在生成，使用临时标题
-      if (this.streamingTitle) {
-        return { ...conv, title: this.streamingTitle };
-      }
-      return conv;
+      return this.conversations[this.currentConversationIndex] || {};
     },
     currentMessages() {
       return this.currentConversation.messages || [];
     },
     sortedConversations() {
-      return [...this.conversations].map((conv, index) => ({
+      // 使用缓存机制优化性能
+      const cacheKey = this.conversations.map(c => `${c.id}-${c.updatedAt || c.createdAt}`).join('|');
+      if (this._sortedConversationsCache && this._sortedConversationsCacheKey === cacheKey) {
+        return this._sortedConversationsCache;
+      }
+      
+      const result = [...this.conversations].map((conv, index) => ({
         ...conv,
         originalIndex: index
       })).sort((a, b) => {
@@ -86,12 +86,26 @@ export default {
         const timeB = b.updatedAt || b.createdAt;
         return new Date(timeB) - new Date(timeA);
       });
+      
+      this._sortedConversationsCache = result;
+      this._sortedConversationsCacheKey = cacheKey;
+      return result;
     }
   },
   watch: {
     conversations: {
       handler(newVal) {
-        localStorage.setItem('conversations', JSON.stringify(newVal));
+        // 使用防抖优化localStorage写入性能
+        if (this.saveTimer) {
+          clearTimeout(this.saveTimer);
+        }
+        this.saveTimer = setTimeout(() => {
+          try {
+            localStorage.setItem('conversations', JSON.stringify(newVal));
+          } catch (error) {
+            console.error('保存对话到localStorage失败:', error);
+          }
+        }, 500); // 500ms防抖
       },
       deep: true
     }
@@ -103,19 +117,22 @@ export default {
         document.documentElement.classList.add('dark-mode');
       }
   },
+  beforeDestroy() {
+    if (this.saveTimer) {
+      clearTimeout(this.saveTimer);
+    }
+  },
   methods: {
-    handleUpdateTitleStream(streamingTitle) {
-      // 使用临时变量存储流式标题，避免触发conversations的deep watcher
-      this.streamingTitle = streamingTitle;
-    },
+
     handleUpdateTitle(finalTitle) {
       const currentConv = this.conversations[this.currentConversationIndex];
       if(currentConv) {
+        // Vue 3 中直接赋值即可触发响应式更新
         currentConv.title = finalTitle;
         currentConv.updatedAt = new Date().toISOString();
-        // 清空临时的流式标题
-        this.streamingTitle = '';
-        this.$forceUpdate();
+        // 清除缓存以确保sortedConversations重新计算
+        this._sortedConversationsCache = null;
+        this._sortedConversationsCacheKey = null;
       }
     },
     handleThemeChange(isDarkMode) {
@@ -400,5 +417,109 @@ html, body {
 
 .markdown-body pre {
   margin: 0.8em 0;
+}
+
+/* 表格样式 */
+.markdown-body table {
+  border-collapse: collapse;
+  margin: 1em 0;
+  width: 100%;
+  background: var(--card-bg);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  border: 1px solid var(--border-color);
+}
+
+.markdown-body thead {
+  background: linear-gradient(135deg, var(--primary-color), var(--primary-hover));
+  color: white;
+}
+
+.markdown-body thead th {
+  padding: 16px 20px;
+  text-align: left;
+  font-weight: 600;
+  font-size: 14px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  border: none;
+}
+
+.markdown-body tbody tr {
+  transition: all 0.2s ease;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.markdown-body tbody tr:last-child {
+  border-bottom: none;
+}
+
+
+
+.markdown-body td,
+.markdown-body th {
+  padding: 14px 20px;
+  text-align: left;
+  vertical-align: middle;
+  border: none;
+}
+
+.markdown-body td {
+  color: var(--text-color);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.markdown-body tbody tr:nth-child(even) {
+  background: rgba(0, 0, 0, 0.02);
+}
+
+[data-theme="dark"] .markdown-body tbody tr:nth-child(even) {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+/* 表格响应式设计 */
+@media (max-width: 768px) {
+  .markdown-body table {
+    font-size: 13px;
+    border-radius: 8px;
+  }
+  
+  .markdown-body td,
+  .markdown-body th {
+    padding: 10px 12px;
+  }
+  
+  .markdown-body thead th {
+    padding: 12px;
+    font-size: 12px;
+  }
+}
+
+/* 表格内容对齐 */
+.markdown-body table td:first-child,
+.markdown-body table th:first-child {
+  padding-left: 24px;
+}
+
+.markdown-body table td:last-child,
+.markdown-body table th:last-child {
+  padding-right: 24px;
+}
+
+/* 表格滚动容器 */
+.markdown-body .table-wrapper {
+  overflow-x: auto;
+  margin: 1em 0;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.markdown-body .table-wrapper table {
+  margin: 0;
+  min-width: 100%;
+  box-shadow: none;
+  border-radius: 0;
 }
 </style>

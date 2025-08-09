@@ -42,7 +42,7 @@
 - **智能侧边栏**: 支持折叠/展开，移动端自动适配
 - **移动端优化**: 触摸友好的交互设计和布局
 - **语法高亮**: 代码块语法高亮显示（基于highlight.js）
-- **数学公式**: 支持 LaTeX 数学公式渲染（基于KaTeX）
+
 - **Markdown渲染**: 完整的Markdown格式支持（基于marked）
 - **欢迎界面**: 新对话时显示示例问题和引导
 
@@ -73,7 +73,7 @@
 - **OpenAI SDK 5.11.0**: DeepSeek API调用和流式响应处理
 - **Marked 16.1.1**: Markdown解析和渲染
 - **Highlight.js**: 代码语法高亮显示
-- **KaTeX 0.16.22**: LaTeX数学公式渲染
+
 - **Mammoth 1.9.1**: Word文档(.docx)解析
 - **XLSX 0.18.5**: Excel文件(.xlsx/.xls)处理
 
@@ -81,7 +81,7 @@
 - **Babel**: JavaScript编译和转换
 - **ESLint**: 代码质量检查和格式化
 - **Core-js 3.8.3**: JavaScript标准库polyfill
-- **TypeScript支持**: KaTeX类型定义
+
 
 ## 🚀 快速开始
 
@@ -181,7 +181,7 @@ chat/
 - **导出功能**: 支持单个对话和全部对话的JSON格式导出
 
 ### ChatContainer.vue - 主聊天界面
-- **消息渲染**: 支持Markdown、代码高亮、数学公式渲染
+- **消息渲染**: 支持Markdown、代码高亮
 - **流式输出**: 实时显示AI回复的流式内容
 - **文件处理**: 支持Word、Excel、文本文件的上传和预览
 - **语音输入**: 集成浏览器语音识别API

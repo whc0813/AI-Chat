@@ -38,7 +38,7 @@
         class="title-text"
         v-if="!isRenaming"
         @dblclick="startRenaming"
-      >{{ currentTitle || "新对话" }}</span>
+      >{{ displayTitle || currentTitle || "新对话" }}</span>
 
       <div v-else class="title-edit-container">
         <input
@@ -60,16 +60,79 @@
       <!-- 新对话欢迎界面 -->
       <div v-if="messages.length === 0" class="welcome-container">
         <div class="welcome-content">
-          <h1 class="welcome-title">新对话</h1>
-          <p class="welcome-description">询问任何问题</p>
-          <div class="example-questions">
-            <div class="example-item" @click="sendExampleQuestion('初次见面问候')">
-              <span class="example-icon">👋</span>
-              <span class="example-text">初次见面问候</span>
+          <div class="welcome-header">
+            <div class="welcome-logo">🤖</div>
+            <h1 class="welcome-title">AI 智能助手</h1>
+            <p class="welcome-description">我可以帮助您解答问题、编写代码、创作内容等</p>
+          </div>
+          
+          <div class="capabilities-section">
+            <h3 class="section-title">我能为您做什么？</h3>
+            <div class="capabilities-grid">
+              <div class="capability-card">
+                <span class="capability-icon">💡</span>
+                <span class="capability-text">解答问题</span>
+              </div>
+              <div class="capability-card">
+                <span class="capability-icon">💻</span>
+                <span class="capability-text">编程协助</span>
+              </div>
+              <div class="capability-card">
+                <span class="capability-icon">✍️</span>
+                <span class="capability-text">文本创作</span>
+              </div>
+              <div class="capability-card">
+                <span class="capability-icon">🔍</span>
+                <span class="capability-text">数据分析</span>
+              </div>
             </div>
-            <div class="example-item" @click="sendExampleQuestion('高效沟通问题')">
-              <span class="example-icon">💬</span>
-              <span class="example-text">高效沟通问题</span>
+          </div>
+          
+          <div class="example-questions">
+            <h3 class="section-title">试试这些问题</h3>
+            <div class="example-grid">
+              <div class="example-item" @click="sendExampleQuestion('请介绍一下你自己，你能帮我做什么？')">
+                <span class="example-icon">👋</span>
+                <div class="example-content">
+                  <span class="example-text">自我介绍</span>
+                  <span class="example-desc">了解AI助手的能力</span>
+                </div>
+              </div>
+              <div class="example-item" @click="sendExampleQuestion('帮我写一个Python函数来计算斐波那契数列')">
+                <span class="example-icon">🐍</span>
+                <div class="example-content">
+                  <span class="example-text">编程帮助</span>
+                  <span class="example-desc">Python代码示例</span>
+                </div>
+              </div>
+              <div class="example-item" @click="sendExampleQuestion('请帮我写一份关于人工智能发展的简短报告')">
+                <span class="example-icon">📝</span>
+                <div class="example-content">
+                  <span class="example-text">文档写作</span>
+                  <span class="example-desc">AI发展报告</span>
+                </div>
+              </div>
+              <div class="example-item" @click="sendExampleQuestion('解释一下机器学习和深度学习的区别')">
+                <span class="example-icon">🧠</span>
+                <div class="example-content">
+                  <span class="example-text">知识问答</span>
+                  <span class="example-desc">技术概念解释</span>
+                </div>
+              </div>
+              <div class="example-item" @click="sendExampleQuestion('帮我制定一个学习计划来提升编程技能')">
+                <span class="example-icon">📚</span>
+                <div class="example-content">
+                  <span class="example-text">学习规划</span>
+                  <span class="example-desc">个人发展建议</span>
+                </div>
+              </div>
+              <div class="example-item" @click="sendExampleQuestion('创作一首关于春天的现代诗')">
+                <span class="example-icon">🌸</span>
+                <div class="example-content">
+                  <span class="example-text">创意写作</span>
+                  <span class="example-desc">诗歌创作</span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -146,12 +209,10 @@
             <span>思考过程：</span>
             <span class="toggle-icon">{{ isCurrentThinkingExpanded ? '▼' : '▶' }}</span>
           </div>
-          <div class="thinking-text" v-if="isCurrentThinkingExpanded">
-            <pre class="streaming-text">{{ currentThinking }}</pre>
+          <div class="thinking-text" v-if="isCurrentThinkingExpanded" v-html="renderMarkdown(currentThinking)">
           </div>
         </div>
-        <div v-if="currentAnswer" class="plain-content">
-          <pre class="streaming-text">{{ currentAnswer }}</pre>
+        <div v-if="currentAnswer" class="plain-content" v-html="renderMarkdown(currentAnswer)">
         </div>
         <div v-if="!currentAnswer && !currentThinking" class="loading-indicator">
           正在生成回复...
@@ -160,7 +221,7 @@
       </div>
     </div>
 
-    <div class="input-area" style="padding: 0;">
+    <div class="input-area">
       <div class="input-content">
       <div v-if="selectedFile" class="file-preview">
         <div class="file-preview-header">
@@ -282,9 +343,6 @@
 import { chatWithAI, cancelAllRequests } from '../api/chat';
 import MarkdownIt from 'markdown-it';
 import hljs from 'highlight.js';
-// 移除默认主题CSS，使用自定义语法高亮样式
-// import 'highlight.js/styles/base16/dracula.css';
-// 使用CDN版本的KaTeX CSS，移除本地导入避免冲突
 import mammoth from 'mammoth';
 import * as XLSX from 'xlsx';
 
@@ -334,12 +392,16 @@ export default {
       currentThinking: '',
       currentAnswer: '',
       streamingUpdateTimer: null,
+      // 性能优化：渲染缓存
+      _renderCache: new Map(),
+      _lastRenderedLength: 0,
       expandedThinking: {},
       isCurrentThinkingExpanded: true,
       isGenerating: false,
       requestStartTime: null,
       currentRequestStats: null,
       isDarkMode: false,
+      displayTitle: '',
       debounceTimer: null,
       titleClickTimer: null,
       isRenaming: false,
@@ -397,7 +459,8 @@ export default {
         
         // 只在消息数量真正变化时处理
         if (!oldMessages || newMessages.length !== oldMessages.length) {
-          this.$nextTick(() => {
+          // 使用requestAnimationFrame确保在下一帧执行，避免递归
+          requestAnimationFrame(() => {
             const container = this.$refs.chatMessages;
             if (container) {
               container.scrollTop = container.scrollHeight;
@@ -415,9 +478,41 @@ export default {
   },
   beforeDestroy() {
     document.removeEventListener('click', this.handleClickOutside);
-    // 清理定时器
+    
+    // 清理所有定时器，防止内存泄漏
     if (this.streamingUpdateTimer) {
       clearTimeout(this.streamingUpdateTimer);
+      this.streamingUpdateTimer = null;
+    }
+    if (this.debounceTimer) {
+      clearTimeout(this.debounceTimer);
+      this.debounceTimer = null;
+    }
+    if (this.titleClickTimer) {
+      clearTimeout(this.titleClickTimer);
+      this.titleClickTimer = null;
+    }
+    if (this.stopTimer) {
+      clearTimeout(this.stopTimer);
+      this.stopTimer = null;
+    }
+    
+    // 重置DOM操作标记
+    this._copyButtonsSetup = false;
+    
+    // 清理渲染缓存
+    if (this._renderCache) {
+      this._renderCache.clear();
+    }
+    this._lastRenderedLength = 0;
+    
+    // 停止语音识别
+    if (this.recognition && this.isSpeechRecognizing) {
+      try {
+        this.recognition.stop();
+      } catch (error) {
+        console.error('停止语音识别失败:', error);
+      }
     }
   },
   mounted() {
@@ -426,7 +521,7 @@ export default {
         document.addEventListener('click', this.handleClickOutside);
         this.$nextTick(() => {
             this.setupCopyButtons();
-            this.applyCodeHighlighting();
+            // 移除applyCodeHighlighting - markdown-it已在renderMarkdown中完成语法高亮
         });
         document.documentElement.classList.toggle('dark-mode', this.isDarkMode);
     },
@@ -445,6 +540,18 @@ export default {
 
     renderMarkdown(content) {
         if (!content) return '';
+        
+        // 性能优化：流式渲染时使用缓存和增量更新
+        if (this.isStreaming && content === this.currentAnswer) {
+            return this._renderStreamingContent(content);
+        }
+        
+        // 非流式渲染：检查缓存
+        const cacheKey = content;
+        if (this._renderCache.has(cacheKey)) {
+            return this._renderCache.get(cacheKey);
+        }
+        
         try {
             // 使用 markdown-it 渲染
             let html = this.markdownRenderer.render(content);
@@ -456,15 +563,89 @@ export default {
                 return this._wrapCodeBlock('plaintext', code);
             });
             
-            return html;
+            // 为表格添加包装器以支持水平滚动
+            html = html.replace(/<table([^>]*)>([\s\S]*?)<\/table>/g, (match, attrs, tableContent) => {
+                return `<div class="table-wrapper"><table${attrs}>${tableContent}</table></div>`;
+            });
+            
+            // 包装在 markdown-body 类中以应用样式
+            const result = `<div class="markdown-body">${html}</div>`;
+            
+            // 缓存结果（限制缓存大小）
+            if (this._renderCache.size > 50) {
+                const firstKey = this._renderCache.keys().next().value;
+                this._renderCache.delete(firstKey);
+            }
+            this._renderCache.set(cacheKey, result);
+            
+            return result;
         } catch (error) {
             console.error('Markdown rendering error:', error);
             return '<div class="render-error">内容渲染失败</div>';
         }
     },
+    
+    // 流式渲染优化：增量更新机制
+    _renderStreamingContent(content) {
+        const contentLength = content.length;
+        
+        // 如果内容长度没有显著增加，跳过重新渲染
+        if (contentLength - this._lastRenderedLength < 50 && contentLength > 100) {
+            // 返回简单的文本包装，避免复杂的Markdown解析
+            return `<div class="markdown-body"><div class="streaming-text">${this._escapeHtml(content)}</div></div>`;
+        }
+        
+        // 更新最后渲染长度
+        this._lastRenderedLength = contentLength;
+        
+        // 对于较短的内容或显著增长的内容，进行完整渲染
+        try {
+            let html = this.markdownRenderer.render(content);
+            
+            // 简化的样式处理（减少正则表达式操作）
+            if (html.includes('<pre><code')) {
+                html = html.replace(/<pre><code class="language-(\w+)"([^>]*)>([\s\S]*?)<\/code><\/pre>/g, (match, lang, attrs, code) => {
+                    return this._wrapCodeBlock(lang, code);
+                }).replace(/<pre><code([^>]*)>([\s\S]*?)<\/code><\/pre>/g, (match, attrs, code) => {
+                    return this._wrapCodeBlock('plaintext', code);
+                });
+            }
+            
+            if (html.includes('<table')) {
+                html = html.replace(/<table([^>]*)>([\s\S]*?)<\/table>/g, (match, attrs, tableContent) => {
+                    return `<div class="table-wrapper"><table${attrs}>${tableContent}</table></div>`;
+                });
+            }
+            
+            return `<div class="markdown-body">${html}</div>`;
+        } catch (error) {
+            console.error('Streaming render error:', error);
+            return `<div class="markdown-body"><div class="streaming-text">${this._escapeHtml(content)}</div></div>`;
+        }
+    },
+    
+    // HTML转义函数
+    _escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    },
+    
     _wrapCodeBlock(language, highlightedCode) {
         const lang = language || 'plaintext';
         const showPreviewBtn = lang.toLowerCase() === 'html';
+        
+        // 将代码按行分割并添加行号，过滤末尾空行
+        const lines = highlightedCode.split('\n');
+        // 如果最后一行是空的，则移除它
+        if (lines.length > 0 && lines[lines.length - 1] === '') {
+            lines.pop();
+        }
+        const numberedLines = lines.map((line, index) => {
+            const lineNumber = index + 1;
+            return `<div class="code-line"><span class="line-number">${lineNumber}</span><span class="line-content">${line || ' '}</span></div>`;
+        }).join('');
+        
         return `
             <div class="code-block-container">
                 <div class="code-block-header">
@@ -476,57 +657,84 @@ export default {
                         </button>
                     </div>
                 </div>
-                <pre class="custom-code-block"><code class="hljs language-${lang}">${highlightedCode}</code></pre>
+                <div class="code-block-wrapper">
+                    <div class="line-numbers-column">
+                        ${lines.map((_, index) => `<div class="line-number-item">${index + 1}</div>`).join('')}
+                    </div>
+                    <pre class="custom-code-block"><code class="hljs language-${lang}">${highlightedCode}</code></pre>
+                </div>
             </div>
         `;
     },
     setupCopyButtons() {
-      this.$el.addEventListener('click', (e) => {
+      // 使用防抖避免频繁的DOM查询
+      if (this._copyButtonsSetup) return;
+      this._copyButtonsSetup = true;
+      
+      // 使用事件委托，但限制在消息容器内
+      const messagesContainer = this.$el.querySelector('.messages-container');
+      if (!messagesContainer) return;
+      
+      messagesContainer.addEventListener('click', (e) => {
         const copyBtn = e.target.closest('.copy-code-btn');
         const previewBtn = e.target.closest('.preview-html-btn');
         
         if (copyBtn) {
           e.preventDefault();
           e.stopPropagation();
-          const codeBlock = copyBtn.closest('.code-block-container').querySelector('code');
-          const code = codeBlock.textContent;
-          const originalHTML = copyBtn.innerHTML;
-          
-          const onSuccess = () => {
-            copyBtn.innerHTML = '✓ 已复制';
-            setTimeout(() => {
-              copyBtn.innerHTML = originalHTML;
-            }, 2000);
-          };
-          
-          const onError = (err) => {
-            console.error('复制失败:', err);
-            copyBtn.innerHTML = '✗ 复制失败';
-            setTimeout(() => {
-              copyBtn.innerHTML = originalHTML;
-            }, 2000);
-          };
-          
-          // 尝试使用现代 Clipboard API
-          if (navigator.clipboard && navigator.clipboard.writeText) {
-            navigator.clipboard.writeText(code).then(onSuccess).catch((error) => {
-              // 如果 Clipboard API 失败，尝试使用传统方法
-              this.fallbackCopyTextToClipboard(code, onSuccess, onError);
-            });
-          } else {
-            // 如果不支持 Clipboard API，直接使用传统方法
-            this.fallbackCopyTextToClipboard(code, onSuccess, onError);
-          }
+          this.handleCopyCode(copyBtn);
         }
         
         if (previewBtn) {
           e.preventDefault();
           e.stopPropagation();
-          const codeBlock = previewBtn.closest('.code-block-container').querySelector('code');
-          const htmlCode = codeBlock.textContent;
-          this.openHtmlPreview(htmlCode);
+          this.handlePreviewHtml(previewBtn);
         }
       });
+    },
+    
+    handleCopyCode(copyBtn) {
+      const codeBlock = copyBtn.closest('.code-block-container').querySelector('code');
+      if (!codeBlock) return;
+      
+      const code = codeBlock.textContent;
+      const originalHTML = copyBtn.innerHTML;
+      
+      const onSuccess = () => {
+        copyBtn.innerHTML = '✓ 已复制';
+        setTimeout(() => {
+          if (copyBtn.parentNode) { // 确保元素仍在DOM中
+            copyBtn.innerHTML = originalHTML;
+          }
+        }, 2000);
+      };
+      
+      const onError = (err) => {
+        console.error('复制失败:', err);
+        copyBtn.innerHTML = '✗ 复制失败';
+        setTimeout(() => {
+          if (copyBtn.parentNode) { // 确保元素仍在DOM中
+            copyBtn.innerHTML = originalHTML;
+          }
+        }, 2000);
+      };
+      
+      // 尝试使用现代 Clipboard API
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(code).then(onSuccess).catch((error) => {
+          this.fallbackCopyTextToClipboard(code, onSuccess, onError);
+        });
+      } else {
+        this.fallbackCopyTextToClipboard(code, onSuccess, onError);
+      }
+    },
+    
+    handlePreviewHtml(previewBtn) {
+      const codeBlock = previewBtn.closest('.code-block-container').querySelector('code');
+      if (!codeBlock) return;
+      
+      const htmlCode = codeBlock.textContent;
+      this.openHtmlPreview(htmlCode);
     },
 
 
@@ -616,21 +824,24 @@ export default {
                 messagesForAPI,
                 this.selectedModel,
                 (content, type) => {
-                    // 使用防抖机制减少频繁更新
-                    if (this.streamingUpdateTimer) {
-                        clearTimeout(this.streamingUpdateTimer);
-                    }
-                    
                     if (type === 'thinking') {
                         this.currentThinking += content;
                     } else {
                         this.currentAnswer += content;
                     }
                     
-                    // 延迟更新，减少响应式触发频率
+                    // 优化流式更新：使用requestAnimationFrame和防抖
+                    if (this.streamingUpdateTimer) {
+                        clearTimeout(this.streamingUpdateTimer);
+                    }
+                    
                     this.streamingUpdateTimer = setTimeout(() => {
-                        this.$forceUpdate();
-                    }, 50);
+                        // 使用requestAnimationFrame确保在浏览器下一帧渲染
+                        requestAnimationFrame(() => {
+                            // 强制Vue更新，但避免频繁的DOM操作
+                            this.$forceUpdate();
+                        });
+                    }, 100); // 增加到100ms，减少更新频率
                 }
             );
             
@@ -657,6 +868,10 @@ export default {
             this.isGenerating = false;
             this.$emit('generating-changed', false);
             this.isStreaming = false;
+            
+            // 重置渲染状态，确保最终内容完整渲染
+            this._lastRenderedLength = 0;
+            
             // 清理流式更新定时器
             if (this.streamingUpdateTimer) {
                 clearTimeout(this.streamingUpdateTimer);
@@ -754,21 +969,24 @@ export default {
                     messagesForAPI,
                     this.selectedModel,
                     (content, type) => {
-                        // 使用防抖机制减少频繁更新
-                        if (this.streamingUpdateTimer) {
-                            clearTimeout(this.streamingUpdateTimer);
-                        }
-                        
                         if (type === 'thinking') {
                             this.currentThinking += content;
                         } else {
                             this.currentAnswer += content;
                         }
                         
-                        // 延迟更新，减少响应式触发频率
+                        // 优化流式更新：使用requestAnimationFrame和防抖
+                        if (this.streamingUpdateTimer) {
+                            clearTimeout(this.streamingUpdateTimer);
+                        }
+                        
                         this.streamingUpdateTimer = setTimeout(() => {
-                            this.$forceUpdate();
-                        }, 50);
+                            // 使用requestAnimationFrame确保在浏览器下一帧渲染
+                            requestAnimationFrame(() => {
+                                // 强制Vue更新，但避免频繁的DOM操作
+                                this.$forceUpdate();
+                            });
+                        }, 100); // 增加到100ms，减少更新频率
                     }
                 );
                 
@@ -791,6 +1009,10 @@ export default {
                 this.isGenerating = false;
                 this.$emit('generating-changed', false);
                 this.isStreaming = false;
+                
+                // 重置渲染状态，确保最终内容完整渲染
+                this._lastRenderedLength = 0;
+                
                 // 清理流式更新定时器
                 if (this.streamingUpdateTimer) {
                     clearTimeout(this.streamingUpdateTimer);
@@ -822,11 +1044,11 @@ export default {
         }
         this.$emit('send-message', aiMessage);
         
-        // 延迟处理，避免与messages watcher冲突
-        setTimeout(() => {
+        // 使用$nextTick确保DOM更新完成后再处理
+        this.$nextTick(() => {
             this.setupCopyButtons();
-            this.applyCodeHighlighting();
-        }, 100);
+            // 移除applyCodeHighlighting - markdown-it已在renderMarkdown中完成语法高亮
+        });
         
         // 保留文件内容以便后续预览
         // const lastUserMessage = this.messages.filter(m => m.role === 'user').pop();
@@ -1046,7 +1268,10 @@ export default {
         return;
         }
         try {
-        let title = '';
+        let finalTitle = ''; // 使用局部变量累积标题
+        // 开始时重置显示标题
+        this.displayTitle = '';
+        
         await chatWithAI(
             [
             { role: "system", content: "你是一个专业的对话标题总结助手。请仔细分析对话的核心主题和关键内容，生成一个准确、简洁的标题。\n\n要求：\n1. 标题应准确反映对话的主要内容或问题\n2. 优先提取用户的具体问题、需求或讨论的主题\n3. 避免使用模糊的词汇，如'问题'、'咨询'、'讨论'等\n4. 长度控制在8-12个字之间\n5. 使用中文，语言简洁明了\n6. 以流式方式逐字输出标题，不要包含引号或其他符号" },
@@ -1054,10 +1279,16 @@ export default {
             ],
             "deepseek-chat",
             (content, type) => {
-            if (type === 'answer') { title += content; this.$emit('update-title-stream', title.trim()); }
+            if (type === 'answer') { 
+                finalTitle += content; 
+                // 更新本地数据属性，而不是emit事件
+                this.displayTitle = finalTitle.trim(); 
+            }
             }
         );
-        this.$emit('update-title', title.trim());
+        
+        // 完成后，向父组件emit最终标题
+        this.$emit('update-title', this.displayTitle);
         } catch (error) {
         console.error("标题流式生成失败:", error);
         const userMessage = this.messages.find(m => m.role === 'user')?.content || '';
@@ -1234,20 +1465,7 @@ export default {
           }
       },
       
-      // 应用代码高亮（优化版本，避免重复处理）
-      applyCodeHighlighting() {
-          // 移除$nextTick，直接处理避免递归
-          const codeBlocks = this.$el.querySelectorAll('pre code');
-          codeBlocks.forEach(block => {
-              // 检查是否已经被highlight.js处理过，避免重复处理
-              if (!block.classList.contains('hljs') || !block.dataset.highlighted) {
-                  block.classList.add('hljs');
-                  hljs.highlightElement(block);
-                  // 标记为已处理，避免重复高亮
-                  block.dataset.highlighted = 'true';
-              }
-          });
-      }
+      // applyCodeHighlighting方法已删除 - markdown-it在renderMarkdown中完成所有语法高亮
 
   },
 };
@@ -1446,12 +1664,16 @@ export default {
   line-height: 1;
 }
 
+.input-content {
+  padding: 12px 0;
+}
+
 /* 现有样式... */
 .input-area {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 12px 0;
+  gap: 0;
+  padding: 0;
   background: var(--gradient-secondary);
   border-top: 1px solid var(--border-color);
   position: relative;
@@ -1560,69 +1782,190 @@ export default {
 .welcome-container {
   display: flex;
   justify-content: center;
-  align-items: center;
-  min-height: 60vh;
+  align-items: flex-start;
+  min-height: 70vh;
   padding: 40px 20px;
+  animation: fadeIn 0.6s ease-out;
 }
 
 .welcome-content {
   text-align: center;
-  max-width: 600px;
+  max-width: 900px;
   width: 100%;
 }
 
+.welcome-header {
+  margin-bottom: 48px;
+}
+
+.welcome-logo {
+  font-size: 4rem;
+  margin-bottom: 16px;
+  animation: bounce 2s infinite;
+}
+
 .welcome-title {
-  font-size: 2.5rem;
-  font-weight: 600;
+  font-size: 2.8rem;
+  font-weight: 700;
   color: var(--text-color);
   margin-bottom: 16px;
   line-height: 1.2;
+  background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 .welcome-description {
-  font-size: 1.1rem;
+  font-size: 1.2rem;
   color: var(--text-secondary);
-  margin-bottom: 40px;
-  opacity: 0.8;
+  margin-bottom: 20px;
+  opacity: 0.9;
+  line-height: 1.5;
+}
+
+.capabilities-section {
+  margin-bottom: 48px;
+}
+
+.section-title {
+  font-size: 1.4rem;
+  font-weight: 600;
+  color: var(--text-color);
+  margin-bottom: 24px;
+  opacity: 0.9;
+}
+
+.capabilities-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.capability-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+  background: linear-gradient(135deg, var(--card-bg), var(--action-btn-bg));
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  backdrop-filter: blur(10px);
+}
+
+.capability-icon {
+  font-size: 1.5rem;
+  flex-shrink: 0;
+}
+
+.capability-text {
+  font-size: 1rem;
+  color: var(--text-color);
+  font-weight: 500;
 }
 
 .example-questions {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  max-width: 400px;
+  margin-top: 32px;
+}
+
+.example-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+  max-width: 100%;
   margin: 0 auto;
 }
 
 .example-item {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 16px 20px;
+  gap: 16px;
+  padding: 20px;
   background: var(--card-bg);
   border: 1px solid var(--border-color);
-  border-radius: 12px;
+  border-radius: 16px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.3s ease;
   text-align: left;
+  position: relative;
+  overflow: hidden;
+}
+
+.example-item::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+  transition: left 0.5s ease;
+}
+
+.example-item:hover::before {
+  left: 100%;
 }
 
 .example-item:hover {
-  background: var(--action-btn-bg);
+  background: linear-gradient(135deg, var(--action-btn-bg), var(--card-bg));
   border-color: var(--primary-color);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  transform: translateY(-4px);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
 }
 
 .example-icon {
-  font-size: 1.2rem;
+  font-size: 1.8rem;
   flex-shrink: 0;
+  transition: transform 0.3s ease;
+}
+
+.example-item:hover .example-icon {
+  transform: scale(1.1);
+}
+
+.example-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
 }
 
 .example-text {
-  font-size: 0.95rem;
+  font-size: 1rem;
   color: var(--text-color);
-  font-weight: 500;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.example-desc {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  opacity: 0.8;
+  line-height: 1.4;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes bounce {
+  0%, 20%, 50%, 80%, 100% {
+    transform: translateY(0);
+  }
+  40% {
+    transform: translateY(-10px);
+  }
+  60% {
+    transform: translateY(-5px);
+  }
 }
 .title-text {
   display: inline-block;
@@ -1945,7 +2288,7 @@ export default {
 .chat-messages {
   flex-grow: 1;
   overflow-y: auto;
-  padding: 32px;
+  padding: 40px; /* 增加整体内边距 */
   background: var(--bg-color);
   scrollbar-width: thin;
   scrollbar-color: var(--primary-color) transparent;
@@ -1975,8 +2318,8 @@ export default {
 }
 
 .message {
-  margin-bottom: 24px;
-  padding: 20px 24px;
+  margin-bottom: 32px; /* 增加消息间距 */
+  padding: 24px 28px; /* 增加内边距 */
   border-radius: 16px;
   max-width: 65%;
   word-wrap: break-word;
@@ -2015,13 +2358,17 @@ export default {
 }
 .plain-content,
 .thinking-text {
-  line-height: 1.7;
+  line-height: 1.8; /* 增加行间距 */
   font-size: 15px;
   color: var(--text-color);
 }
 .plain-content p,
 .thinking-text p {
-  margin: 0.7em 0;
+  margin: 1.2em 0; /* 增加段落间距 */
+}
+.plain-content li,
+.thinking-text li {
+  margin: 0.6em 0; /* 增加列表项间距 */
 }
 
 .model-selector select {
@@ -2338,32 +2685,34 @@ button.active::before {
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
-/* 代码块容器样式 */
+/* 代码块容器样式 - 优化版 */
 :deep(.code-block-container) {
   position: relative;
   margin: 2em 0;
-  border-radius: 16px;
+  border-radius: 12px;
   overflow: hidden;
-  box-shadow: var(--shadow-lg);
+  box-shadow: 0 4px 20px rgba(14, 165, 233, 0.08), 0 1px 3px rgba(0, 0, 0, 0.1);
   background: var(--code-bg);
   border: 1px solid var(--border-color);
   backdrop-filter: blur(10px);
+  transition: all 0.3s ease;
 }
 
 
 
-/* 代码块头部样式 */
+/* 代码块头部样式 - 优化版 */
 :deep(.code-block-header) {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 20px;
-  background: linear-gradient(135deg, var(--secondary-color), var(--card-bg));
+  padding: 14px 24px;
+  background: linear-gradient(135deg, rgba(14, 165, 233, 0.05), rgba(14, 165, 233, 0.02));
   color: var(--text-color);
-  font-size: 0.9em;
-  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
-  border-bottom: 1px solid var(--border-color);
+  font-size: 0.85em;
+  font-family: 'JetBrains Mono', 'Fira Code', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  border-bottom: 1px solid rgba(14, 165, 233, 0.1);
   backdrop-filter: blur(10px);
+  font-weight: 600;
 }
 
 /* 代码操作按钮组样式 */
@@ -2379,48 +2728,64 @@ button.active::before {
   font-weight: 600;
 }
 
-/* 复制按钮样式 */
+/* 复制按钮样式 - 优化版 */
 :deep(.copy-code-btn) {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 6px 12px;
-  background: var(--action-btn-bg);
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
+  padding: 8px 14px;
+  background: rgba(14, 165, 233, 0.08);
+  border: 1px solid rgba(14, 165, 233, 0.2);
+  border-radius: 8px;
   cursor: pointer;
-  color: var(--text-color);
+  color: rgb(14, 165, 233);
   font-size: 0.8em;
-  transition: all 0.2s ease;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  backdrop-filter: blur(10px);
 }
 
 :deep(.copy-code-btn:hover) {
-  background: var(--primary-color);
-  color: white;
-  transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(66, 153, 225, 0.3);
+  background: rgba(14, 165, 233, 0.15);
+  border-color: rgba(14, 165, 233, 0.4);
+  color: rgb(14, 165, 233);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(14, 165, 233, 0.25);
 }
 
-/* HTML预览按钮样式 */
+:deep(.copy-code-btn:active) {
+  transform: translateY(0);
+  box-shadow: 0 2px 6px rgba(14, 165, 233, 0.2);
+}
+
+/* HTML预览按钮样式 - 优化版 */
 :deep(.preview-html-btn) {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 6px 12px;
-  background: var(--action-btn-bg);
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
+  padding: 8px 14px;
+  background: rgba(14, 165, 233, 0.08);
+  border: 1px solid rgba(14, 165, 233, 0.2);
+  border-radius: 8px;
   cursor: pointer;
-  color: var(--text-color);
+  color: rgb(14, 165, 233);
   font-size: 0.8em;
-  transition: all 0.2s ease;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  backdrop-filter: blur(10px);
 }
 
 :deep(.preview-html-btn:hover) {
-  background: var(--primary-color);
-  color: white;
-  transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(66, 153, 225, 0.3);
+  background: rgba(14, 165, 233, 0.15);
+  border-color: rgba(14, 165, 233, 0.4);
+  color: rgb(14, 165, 233);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(14, 165, 233, 0.25);
+}
+
+:deep(.preview-html-btn:active) {
+  transform: translateY(0);
+  box-shadow: 0 2px 6px rgba(14, 165, 233, 0.2);
 }
 
 /* HTML预览模态框样式 */
@@ -2452,26 +2817,57 @@ button.active::before {
 }
 
 
-/* 代码内容区域样式 */
+/* 代码块包装器 - 新结构 */
+:deep(.code-block-wrapper) {
+  display: flex;
+  background: var(--code-bg);
+  overflow: hidden;
+}
+
+/* 行号列 - 固定不滚动 */
+:deep(.line-numbers-column) {
+  background: linear-gradient(to right, rgba(14, 165, 233, 0.03), rgba(14, 165, 233, 0.01));
+  border-right: 1px solid rgba(14, 165, 233, 0.15);
+  padding: 1.5rem 0;
+  min-width: 3.5rem;
+  flex-shrink: 0;
+  user-select: none;
+  position: sticky;
+  left: 0;
+  z-index: 2;
+}
+
+:deep(.line-number-item) {
+  text-align: right;
+  padding-right: 0.8rem;
+  color: rgba(14, 165, 233, 0.5);
+  font-size: 0.88em; /* 与代码字体大小一致 */
+  line-height: 1.5;
+  font-family: 'JetBrains Mono', 'Fira Code', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  /* 移除固定高度，让行高自然对齐 */
+}
+
+/* 代码内容区域 - 可滚动 */
 :deep(pre.custom-code-block) {
   margin: 0;
   border-radius: 0;
-  background: var(--code-bg);
-  position: relative;
-  overflow: hidden;
+  background: transparent;
+  flex: 1;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 :deep(pre.custom-code-block code) {
   display: block;
-  padding: 1.5rem 2rem;
-  overflow-x: auto;
-  font-size: 0.95em;
-  line-height: 1.7;
+  padding: 1.5rem 1.2rem;
+  font-size: 0.88em;
+  line-height: 1.5;
   tab-size: 2;
   font-family: 'JetBrains Mono', 'Fira Code', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
   color: var(--text-color);
   background: transparent;
-  scrollbar-width: thin;
+  white-space: pre;
+  min-width: max-content;
 }
 
 :deep(.hljs) {
@@ -2484,22 +2880,22 @@ button.active::before {
   scrollbar-color: var(--primary-color) transparent;
 }
 
-/* 语法高亮样式 - 全局样式 */
+/* 语法高亮样式 - 蓝色主题优化版 */
 .hljs .hljs-keyword,
 .hljs .hljs-selector-tag,
 .hljs .hljs-literal,
 .hljs .hljs-section,
 .hljs .hljs-link {
-  color: #c678dd !important;
+  color: #7c3aed !important; /* 蓝紫色关键字 */
   font-weight: 600 !important;
 }
 
 .hljs .hljs-function .hljs-keyword {
-  color: #61afef !important;
+  color: #0ea5e9 !important; /* 亮蓝色函数关键字 */
 }
 
 :deep(.hljs-subst) {
-  color: #e06c75;
+  color: #06b6d4; /* 青色替换 */
 }
 
 .hljs .hljs-string,
@@ -2513,15 +2909,20 @@ button.active::before {
 .hljs .hljs-variable,
 .hljs .hljs-template-tag,
 .hljs .hljs-template-variable {
-  color: #98c379 !important;
+  color: #10b981 !important; /* 青绿色字符串 */
 }
 
 .hljs .hljs-comment,
 .hljs .hljs-quote,
 .hljs .hljs-deletion,
 .hljs .hljs-meta {
-  color: #5c6370 !important;
+  color: rgba(14, 165, 233, 0.6) !important; /* 淡蓝色注释 */
   font-style: italic !important;
+}
+
+.hljs .hljs-number {
+  color: #f59e0b !important; /* 橙色数字 */
+  font-weight: 500 !important;
 }
 
 :deep(.hljs-keyword),
@@ -2720,110 +3121,50 @@ button.active::before {
   color: #d97706;
 }
 
+/* 代码块滚动条样式 - 优化版 */
 :deep(pre.custom-code-block code::-webkit-scrollbar) {
-  height: 8px;
+  height: 6px;
 }
 
 :deep(pre.custom-code-block code::-webkit-scrollbar-track) {
-  background: transparent;
+  background: rgba(14, 165, 233, 0.05);
+  border-radius: 3px;
 }
 
 :deep(pre.custom-code-block code::-webkit-scrollbar-thumb) {
-  background: var(--primary-color);
-  border-radius: 4px;
+  background: linear-gradient(90deg, rgba(14, 165, 233, 0.6), rgba(14, 165, 233, 0.8));
+  border-radius: 3px;
+  transition: all 0.3s ease;
 }
 
 :deep(pre.custom-code-block code::-webkit-scrollbar-thumb:hover) {
-  background: var(--primary-hover);
+  background: linear-gradient(90deg, rgba(14, 165, 233, 0.8), rgba(14, 165, 233, 1));
+  box-shadow: 0 2px 4px rgba(14, 165, 233, 0.3);
 }
 
 /* 内联代码样式 */
 :deep(:not(pre) > code) {
-  padding: 0.3em 0.6em;
+  padding: 0.15em 0.5em;
   margin: 0 0.1em;
   font-size: 0.9em;
   background: linear-gradient(135deg, var(--code-bg), var(--card-bg));
-  border-radius: 8px;
+  border-radius: 6px;
   color: var(--primary-color);
   font-family: 'JetBrains Mono', 'Fira Code', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
   border: 1px solid var(--border-color);
   font-weight: 500;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  line-height: 1.3;
+  display: inline-block;
+  vertical-align: baseline;
+  max-width: 100%;
+  overflow-wrap: break-word;
 }
 
 
 
-/* KaTeX 数学公式基础样式 */
-:deep(.katex) {
-  font-size: 1.1em;
-}
 
-:deep(.katex-display) {
-  margin: 1em 0;
-  text-align: center;
-}
-
-/* 公式错误样式 */
-.formula-error {
-  background: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-family: monospace;
-  font-size: 0.9em;
-  border: 1px solid rgba(239, 68, 68, 0.3);
-  cursor: help;
-}
-
-/* 公式回退样式 */
-.formula-fallback {
-  background: rgba(251, 191, 36, 0.1);
-  color: #f59e0b;
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-family: monospace;
-  font-size: 0.9em;
-  border: 1px solid rgba(251, 191, 36, 0.3);
-  cursor: help;
-}
-
-/* 暗色模式下的 KaTeX 样式 */
-[data-theme="dark"] :deep(.katex) {
-  color: #e5e7eb !important;
-}
-
-[data-theme="dark"] :deep(.katex .base),
-[data-theme="dark"] :deep(.katex .mord),
-[data-theme="dark"] :deep(.katex .mopen),
-[data-theme="dark"] :deep(.katex .mclose),
-[data-theme="dark"] :deep(.katex .mpunct) {
-  color: #e5e7eb !important;
-}
-
-[data-theme="dark"] :deep(.katex .mbin),
-[data-theme="dark"] :deep(.katex .mrel),
-[data-theme="dark"] :deep(.katex .mop) {
-  color: #38bdf8 !important;
-}
-
-/* 亮色模式下的 KaTeX 样式 */
-[data-theme="light"] :deep(.katex) {
-  color: #1a1d23 !important;
-}
-
-[data-theme="light"] :deep(.katex .base),
-[data-theme="light"] :deep(.katex .mord),
-[data-theme="light"] :deep(.katex .mopen),
-[data-theme="light"] :deep(.katex .mclose),
-[data-theme="light"] :deep(.katex .mpunct) {
-  color: #1a1d23 !important;
-}
-
-[data-theme="light"] :deep(.katex .mbin),
-[data-theme="light"] :deep(.katex .mrel),
-[data-theme="light"] :deep(.katex .mop) {
-  color: #0ea5e9 !important;
-}
 
 /* 复制反馈样式 */
 .copy-feedback {
@@ -3121,39 +3462,43 @@ button[disabled]:hover {
   display: none;
 }
 
-/* 移动端响应式设计 */
+/* 移动端响应式设计 - 优化版本 */
 @media (max-width: 768px) {
   .preview-modal {
     max-width: 95vw;
     max-height: 90vh;
     margin: 20px;
+    border-radius: 20px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
   }
   
   .preview-modal-header h3 {
     max-width: 250px;
   }
 
-  /* 移动端适配 - 优化布局 */
+  /* 移动端适配 - 优化布局与间距 */
   .chat-container {
     width: 96%;
-    margin: 15px auto;
-    border-radius: 0;
+    margin: 20px auto;
+    border-radius: 20px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
   }
 
   .input-area {
-    padding: 12px 0;
+    padding: 20px 0;
   }
 
   .chat-title {
-    padding: 16px 20px;
-    font-size: 1.2rem;
-    border-radius: 16px 16px 0 0;
+    padding: 20px 24px;
+    font-size: 1.3rem;
+    border-radius: 20px 20px 0 0;
     justify-content: center;
-    gap: 20px;
+    gap: 24px;
     display: flex;
     align-items: center;
     position: relative;
-    min-height: 56px;
+    min-height: 64px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
   }
 
   .title-model-selector {
@@ -3166,42 +3511,50 @@ button[disabled]:hover {
 
   .current-model {
     background: var(--secondary-color);
-    padding: 6px 10px;
-    border-radius: 8px;
-    min-width: 120px;
+    padding: 8px 14px;
+    border-radius: 12px;
+    min-width: 130px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    border: 1px solid var(--border-color);
   }
 
   .model-name {
-    font-size: 11px;
+    font-size: 12px;
+    font-weight: 500;
   }
 
   .model-icon {
-    font-size: 14px;
-    width: 16px;
-    height: 16px;
+    font-size: 16px;
+    width: 18px;
+    height: 18px;
   }
 
   .dropdown-arrow {
-    font-size: 10px;
+    font-size: 11px;
   }
 
   .model-dropdown {
-    border-radius: 8px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+    border-radius: 16px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
     z-index: 1002;
+    border: 1px solid var(--border-color);
   }
 
   .model-option {
-    padding: 10px 12px;
-    gap: 8px;
+    padding: 14px 16px;
+    gap: 12px;
+    border-radius: 12px;
+    margin: 4px 8px;
   }
 
   .model-details .model-name {
-    font-size: 12px;
+    font-size: 13px;
+    font-weight: 500;
   }
 
   .model-description {
-    font-size: 10px;
+    font-size: 11px;
+    line-height: 1.4;
   }
 
   .title-text {
@@ -3209,17 +3562,19 @@ button[disabled]:hover {
   }
 
   .rename-btn {
-    left: 18px;
-    width: 40px;
-    height: 40px;
+    left: 20px;
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   }
 
   .title-edit-container {
     position: static;
     transform: none;
-    width: 60%;
-    max-width: 320px;
-    min-width: 220px;
+    width: 65%;
+    max-width: 340px;
+    min-width: 240px;
     left: auto;
     top: auto;
     display: flex;
@@ -3229,11 +3584,13 @@ button[disabled]:hover {
   }
 
   .title-input {
-    min-width: 140px;
-    font-size: 1.1rem;
-    padding: 10px 16px;
+    min-width: 160px;
+    font-size: 1.2rem;
+    padding: 12px 20px;
     text-align: center;
-    border-radius: 8px;
+    border-radius: 12px;
+    border: 2px solid var(--border-color);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
   }
 
   .theme-toggle-btn {
@@ -3241,86 +3598,95 @@ button[disabled]:hover {
     right: 20px;
     top: 50%;
     transform: translateY(-50%);
-    width: 44px;
-    height: 44px;
-    padding: 10px;
+    width: 48px;
+    height: 48px;
+    padding: 12px;
     margin: 0;
     flex-shrink: 0;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 18px;
+    font-size: 20px;
     line-height: 1;
-    border-radius: 8px;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   }
 
   .chat-messages {
-    padding: 24px 20px;
+    padding: 28px 24px;
+    gap: 20px;
   }
 
+  /* 聊天消息优化 - 占据更宽比例 */
   .message {
-    max-width: 88%;
-    padding: 20px 22px;
-    margin-bottom: 24px;
-    border-radius: 16px;
-    font-size: 15px;
+    max-width: 95%;
+    padding: 24px 26px;
+    margin-bottom: 28px;
+    border-radius: 20px;
+    font-size: 16px;
+    line-height: 1.8;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+    border: 1px solid var(--border-color);
   }
 
   .plain-content,
   .thinking-text {
-    font-size: 15px;
-    line-height: 1.7;
+    font-size: 16px;
+    line-height: 1.8;
   }
 
   .thinking-content {
-    padding: 20px;
-    margin-bottom: 20px;
+    padding: 24px;
+    margin-bottom: 24px;
+    border-radius: 16px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
   }
 
   .thinking-header {
-    font-size: 14px;
+    font-size: 15px;
+    font-weight: 600;
   }
 
+  /* 输入区域优化 */
   .input-area {
-    padding: 16px 0;
-    border-radius: 0 0 16px 16px;
+    padding: 20px 0;
+    border-radius: 0 0 20px 20px;
     position: relative;
   }
-
-
 
   .input-content {
     padding: 0;
     padding-top: 0;
   }
 
-  /* 移动端布局样式 */
+  /* 移动端布局样式优化 */
   .input-controls {
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 20px;
     margin: 0;
     background: var(--input-bg);
     border: 1px solid var(--border-color);
-    border-radius: 0;
-    padding: 16px 12px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+    border-radius: 16px;
+    padding: 20px 16px;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.12);
   }
 
-  /* 移动端输入框 */
+  /* 移动端输入框优化 */
   .input-controls input {
     order: 1;
     width: 100%;
     background: transparent;
     border: none;
     border-radius: 0;
-    padding: 14px 12px;
-    font-size: 16px;
+    padding: 18px 16px;
+    font-size: 17px;
+    line-height: 1.5;
     color: var(--text-color);
     outline: none;
     box-shadow: none;
     margin: 0;
-    transition: all 0.2s ease;
+    transition: all 0.3s ease;
     box-sizing: border-box;
   }
 
@@ -3331,29 +3697,66 @@ button[disabled]:hover {
 
   .input-controls input::placeholder {
     color: var(--text-color);
-    opacity: 0.6;
+    opacity: 0.65;
+    font-size: 16px;
   }
 
-  /* 移动端按钮容器 - 水平排列所有按钮 */
+  /* 移动端按钮容器优化 */
   .input-controls .button-group {
     order: 2;
   }
 
-  /* 创建按钮行容器 */
   .input-controls {
     position: relative;
   }
 
+  /* 添加按钮优化 */
   .input-controls .add-btn {
     position: absolute;
-    bottom: 16px;
-    left: 12px;
-    width: 60px;
-    height: 48px;
-    min-width: 60px;
-    max-width: 60px;
+    bottom: 20px;
+    left: 16px;
+    width: 64px;
+    height: 52px;
+    min-width: 64px;
+    max-width: 64px;
     padding: 0;
-    border-radius: 12px;
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    background: var(--secondary-color);
+    border: 1px solid var(--border-color);
+    color: var(--text-color);
+    transition: all 0.3s ease;
+    cursor: pointer;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  }
+
+  .input-controls .button-group {
+    position: absolute;
+    bottom: 20px;
+    right: 16px;
+    display: flex;
+    gap: 12px;
+    align-items: center;
+  }
+
+  .input-controls .add-btn:hover {
+    background: var(--primary-color);
+    color: white;
+    transform: translateY(-3px);
+    box-shadow: 0 8px 24px rgba(66, 153, 225, 0.25);
+  }
+
+  /* 操作按钮优化 */
+  .input-controls .button-group .action-btn {
+    width: 64px;
+    height: 52px;
+    min-width: 64px;
+    max-width: 64px;
+    padding: 0;
+    border-radius: 16px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -3361,51 +3764,9 @@ button[disabled]:hover {
     background: var(--secondary-color);
     border: 1px solid var(--border-color);
     color: var(--text-color);
-    transition: all 0.2s ease;
+    transition: all 0.3s ease;
     cursor: pointer;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  }
-
-  .input-controls .button-group {
-    position: absolute;
-    bottom: 16px;
-    right: 12px;
-    display: flex;
-    gap: 8px;
-    align-items: center;
-  }
-
-  .input-controls .button-group .action-btn {
-    width: 40px;
-    height: 40px;
-    min-width: 40px;
-    max-width: 40px;
-  }
-
-  .input-controls .add-btn:hover {
-    background: var(--primary-color);
-    color: white;
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(66, 153, 225, 0.3);
-  }
-
-  .input-controls .button-group .action-btn {
-    width: 60px;
-    height: 48px;
-    min-width: 60px;
-    max-width: 60px;
-    padding: 0;
-    border-radius: 12px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 18px;
-    background: var(--secondary-color);
-    border: 1px solid var(--border-color);
-    color: var(--text-color);
-    transition: all 0.2s ease;
-    cursor: pointer;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
     font-weight: 600;
   }
 
@@ -3413,71 +3774,66 @@ button[disabled]:hover {
     background: var(--primary-color);
     color: white;
     border-color: var(--primary-color);
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(66, 153, 225, 0.3);
+    transform: translateY(-3px);
+    box-shadow: 0 8px 24px rgba(66, 153, 225, 0.25);
   }
-
-
 
   /* 为按钮留出空间 */
   .input-controls {
-    padding-bottom: 80px;
+    padding-bottom: 88px;
   }
 
-.input-area.centered {
-    width: 90%;
+  /* 居中输入区域优化 */
+  .input-area.centered {
+    width: 92%;
     max-width: none;
-    padding: 20px;
+    padding: 28px;
     top: 50%;
-    border-radius: 24px;
-    gap: 16px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15), 0 2px 8px rgba(0, 0, 0, 0.1);
-    backdrop-filter: blur(20px);
+    border-radius: 28px;
+    gap: 20px;
+    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.18), 0 4px 16px rgba(0, 0, 0, 0.12);
+    backdrop-filter: blur(24px);
+    border: 1px solid var(--border-color);
   }
-
-
 
   .input-area.centered .button-group {
     justify-content: center;
-    gap: 12px;
-    margin-top: 6px;
+    gap: 16px;
+    margin-top: 8px;
   }
 
   .input-area.centered input {
-    padding: 16px 20px;
-    font-size: 16px;
-    border-radius: 14px;
-    min-height: 52px;
+    padding: 20px 24px;
+    font-size: 17px;
+    line-height: 1.5;
+    border-radius: 18px;
+    min-height: 56px;
     border: 2px solid var(--border-color);
     background: var(--input-bg);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
   }
 
   .input-area.centered .model-selector {
-    padding: 10px 16px;
-    border-radius: 10px;
+    padding: 14px 20px;
+    border-radius: 16px;
     background: var(--secondary-color);
     border: 1px solid var(--border-color);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
   }
 
   .input-area.centered .model-selector select {
-    padding: 10px 14px;
-    font-size: 15px;
-    border-radius: 8px;
+    padding: 12px 18px;
+    font-size: 16px;
+    border-radius: 12px;
     background: var(--input-bg);
     border: none;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   }
 
   .input-area.centered .model-selector label {
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 600;
   }
-
-
-
-
 
   .model-selector {
     min-width: auto;
@@ -3485,47 +3841,55 @@ button[disabled]:hover {
   }
 
   .model-selector label {
-    font-size: 13px;
+    font-size: 14px;
+    font-weight: 500;
   }
 
   .model-selector select {
     width: 100%;
-    padding: 12px 16px;
-    font-size: 15px;
+    padding: 14px 18px;
+    font-size: 16px;
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
   }
 
   input {
-    padding: 16px 20px;
-    font-size: 16px;
-    border-radius: 12px;
+    padding: 18px 22px;
+    font-size: 17px;
+    line-height: 1.5;
+    border-radius: 16px;
+    border: 1px solid var(--border-color);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
   }
 
   .button-group {
     display: grid;
     grid-template-columns: 1fr 1fr;
     grid-template-rows: 1fr 1fr;
-    gap: 12px;
+    gap: 16px;
     justify-items: center;
     align-items: center;
   }
 
   button {
-    padding: 12px 18px;
-    font-size: 15px;
-    border-radius: 10px;
-    min-width: 80px;
+    padding: 16px 22px;
+    font-size: 16px;
+    border-radius: 14px;
+    min-width: 88px;
     width: 100%;
-    max-width: 120px;
-    font-weight: 500;
-    transition: all 0.2s ease;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+    max-width: 140px;
+    font-weight: 600;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    border: 1px solid var(--border-color);
   }
 
   .input-area.centered button:last-child {
     background: var(--primary-color);
     color: white;
     border: 1px solid var(--primary-color);
-    font-weight: 600;
+    font-weight: 700;
   }
 
   .input-area.centered button:not(:last-child) {
@@ -3535,56 +3899,64 @@ button[disabled]:hover {
   }
 
   .input-area.centered button:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
   }
 
+  /* 操作按钮尺寸优化 */
   .action-btn {
-    width: 36px;
-    height: 36px;
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   }
 
   .action-btn svg {
-    width: 18px;
-    height: 18px;
+    width: 20px;
+    height: 20px;
   }
 
   .message-actions {
     opacity: 1;
-    margin-top: 16px;
+    margin-top: 20px;
+    gap: 12px;
   }
 
   .file-preview {
-    margin-bottom: 16px;
+    margin-bottom: 20px;
+    border-radius: 16px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
   }
 
   .file-preview-header {
-    padding: 14px;
+    padding: 18px;
+    border-radius: 16px 16px 0 0;
   }
 
   .file-info {
-    padding: 16px;
+    padding: 20px;
   }
 
   .file-info p {
-    font-size: 14px;
+    font-size: 15px;
+    line-height: 1.6;
   }
 
   .preview-btn {
-    padding: 10px 20px;
-    font-size: 14px;
+    padding: 12px 24px;
+    font-size: 15px;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   }
 
   .speech-error-indicator {
-    padding: 8px 20px 0;
-    font-size: 14px;
+    padding: 12px 24px 0;
+    font-size: 15px;
   }
 
   .listening-indicator {
-    padding: 8px 20px 0;
+    padding: 12px 24px 0;
   }
-
-
 
   .input-content {
     padding: 0;
@@ -3960,30 +4332,85 @@ button[disabled]:hover {
 
   /* 移动端欢迎界面样式 */
   .welcome-container {
-    min-height: 50vh;
+    min-height: 60vh;
     padding: 20px 16px;
   }
 
+  .welcome-content {
+    max-width: 100%;
+  }
+
+  .welcome-header {
+    margin-bottom: 32px;
+  }
+
+  .welcome-logo {
+    font-size: 3rem;
+    margin-bottom: 12px;
+  }
+
   .welcome-title {
-    font-size: 2rem;
+    font-size: 2.2rem;
     margin-bottom: 12px;
   }
 
   .welcome-description {
     font-size: 1rem;
-    margin-bottom: 30px;
+    margin-bottom: 16px;
+  }
+
+  .capabilities-section {
+    margin-bottom: 32px;
+  }
+
+  .section-title {
+    font-size: 1.2rem;
+    margin-bottom: 16px;
+  }
+
+  .capabilities-grid {
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 12px;
+  }
+
+  .capability-card {
+    padding: 12px 16px;
+    border-radius: 12px;
+  }
+
+  .capability-icon {
+    font-size: 1.3rem;
+  }
+
+  .capability-text {
+    font-size: 0.9rem;
   }
 
   .example-questions {
-    max-width: 100%;
+    margin-top: 24px;
+  }
+
+  .example-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
   }
 
   .example-item {
-    padding: 14px 16px;
+    padding: 16px;
+    border-radius: 12px;
+    gap: 14px;
+  }
+
+  .example-icon {
+    font-size: 1.5rem;
   }
 
   .example-text {
-    font-size: 0.9rem;
+    font-size: 0.95rem;
+  }
+
+  .example-desc {
+    font-size: 0.8rem;
   }
 
   input {
@@ -4084,12 +4511,5 @@ button[disabled]:hover {
   color: inherit;
 }
 
-/* 数学公式样式优化 */
-.katex-display-wrapper {
-  margin: 1.5em 0;
-  text-align: center;
-  overflow-x: auto;
-  overflow-y: hidden;
-  padding: 0.5em 0;
-}
+
 </style>

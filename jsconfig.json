@@ -1,9 +1,12 @@
 {
   "compilerOptions": {
-    "target": "es5",
+    "target": "esnext",
     "module": "esnext",
     "baseUrl": "./",
     "moduleResolution": "node",
+    "allowJs": true,
+    "checkJs": false,
+    "jsx": "preserve",
     "paths": {
       "@/*": [
         "src/*"
@@ -14,6 +17,17 @@
       "dom",
       "dom.iterable",
       "scripthost"
+    ],
+    "types": [
+      "node"
     ]
-  }
+  },
+  "include": [
+    "src/**/*",
+    "public/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
 }
