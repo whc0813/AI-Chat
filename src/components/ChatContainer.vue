@@ -479,6 +479,14 @@ export default {
   beforeDestroy() {
     document.removeEventListener('click', this.handleClickOutside);
     
+    // 清理复制按钮事件监听器
+    if (this._copyButtonsSetup && this._copyButtonHandler) {
+      const messagesContainer = this.$el.querySelector('.chat-messages');
+      if (messagesContainer) {
+        messagesContainer.removeEventListener('click', this._copyButtonHandler);
+      }
+    }
+    
     // 清理所有定时器，防止内存泄漏
     if (this.streamingUpdateTimer) {
       clearTimeout(this.streamingUpdateTimer);
@@ -497,8 +505,15 @@ export default {
       this.stopTimer = null;
     }
     
-    // 重置DOM操作标记
+    // 清理复制按钮事件监听器
+    if (this._copyButtonsSetup && this._copyButtonHandler) {
+      const messagesContainer = this.$el.querySelector('.messages-container');
+      if (messagesContainer) {
+        messagesContainer.removeEventListener('click', this._copyButtonHandler);
+      }
+    }
     this._copyButtonsSetup = false;
+    this._copyButtonHandler = null;
     
     // 清理渲染缓存
     if (this._renderCache) {
@@ -666,16 +681,31 @@ export default {
             </div>
         `;
     },
-    setupCopyButtons() {
-      // 使用防抖避免频繁的DOM查询
-      if (this._copyButtonsSetup) return;
-      this._copyButtonsSetup = true;
+    setupCopyButtons(retryCount = 0) {
+      // 移除旧的事件监听器
+      if (this._copyButtonsSetup) {
+        const messagesContainer = this.$el.querySelector('.chat-messages');
+        if (messagesContainer && this._copyButtonHandler) {
+          messagesContainer.removeEventListener('click', this._copyButtonHandler);
+        }
+      }
       
       // 使用事件委托，但限制在消息容器内
-      const messagesContainer = this.$el.querySelector('.messages-container');
-      if (!messagesContainer) return;
+      const messagesContainer = this.$el.querySelector('.chat-messages');
+      if (!messagesContainer) {
+        // 防止无限递归，最多重试5次
+        if (retryCount < 5) {
+          this.$nextTick(() => {
+            this.setupCopyButtons(retryCount + 1);
+          });
+        } else {
+          console.warn('无法找到消息容器，停止设置复制按钮');
+        }
+        return;
+      }
       
-      messagesContainer.addEventListener('click', (e) => {
+      // 创建事件处理器
+      this._copyButtonHandler = (e) => {
         const copyBtn = e.target.closest('.copy-code-btn');
         const previewBtn = e.target.closest('.preview-html-btn');
         
@@ -690,31 +720,95 @@ export default {
           e.stopPropagation();
           this.handlePreviewHtml(previewBtn);
         }
-      });
+      };
+      
+      messagesContainer.addEventListener('click', this._copyButtonHandler);
+      this._copyButtonsSetup = true;
     },
     
     handleCopyCode(copyBtn) {
       const codeBlock = copyBtn.closest('.code-block-container').querySelector('code');
-      if (!codeBlock) return;
+      if (!codeBlock) {
+        console.error('未找到代码块');
+        return;
+      }
       
       const code = codeBlock.textContent;
       const originalHTML = copyBtn.innerHTML;
       
+      // 防止重复点击
+      if (copyBtn.disabled) return;
+      copyBtn.disabled = true;
+      
+      // 创建反馈元素
+      const feedbackEl = document.createElement('div');
+      feedbackEl.className = 'copy-feedback message-feedback';
+      
+      // 使用相对定位避免页面抖动
+      const container = copyBtn.closest('.code-block-container') || copyBtn.parentElement;
+      container.style.position = 'relative';
+      container.appendChild(feedbackEl);
+      
+      // 相对于容器定位
+      feedbackEl.style.position = 'absolute';
+      feedbackEl.style.top = '-45px';
+      feedbackEl.style.left = '50%';
+      feedbackEl.style.transform = 'translateX(-50%) translateY(15px) scale(0.9)';
+      feedbackEl.style.zIndex = '1000';
+      
       const onSuccess = () => {
         copyBtn.innerHTML = '✓ 已复制';
+        copyBtn.style.background = '#48bb78';
+        copyBtn.style.color = 'white';
+        copyBtn.style.borderColor = '#48bb78';
+        
+        feedbackEl.textContent = '✓ 复制成功';
+        feedbackEl.classList.add('show', 'success');
+        feedbackEl.style.transform = 'translateX(-50%) translateY(0) scale(1)';
+        
         setTimeout(() => {
-          if (copyBtn.parentNode) { // 确保元素仍在DOM中
+          feedbackEl.classList.remove('show');
+          setTimeout(() => {
+            if (feedbackEl.parentNode) {
+              feedbackEl.remove();
+            }
+          }, 300);
+          
+          if (copyBtn.parentNode) {
             copyBtn.innerHTML = originalHTML;
+            copyBtn.style.background = '';
+            copyBtn.style.color = '';
+            copyBtn.style.borderColor = '';
+            copyBtn.disabled = false;
           }
         }, 2000);
       };
       
       const onError = (err) => {
         console.error('复制失败:', err);
-        copyBtn.innerHTML = '✗ 复制失败';
+        copyBtn.innerHTML = '✗ 失败';
+        copyBtn.style.background = '#f56565';
+        copyBtn.style.color = 'white';
+        copyBtn.style.borderColor = '#f56565';
+        
+        feedbackEl.textContent = '✗ 复制失败';
+        feedbackEl.classList.add('show', 'error');
+        feedbackEl.style.transform = 'translateX(-50%) translateY(0) scale(1)';
+        
         setTimeout(() => {
-          if (copyBtn.parentNode) { // 确保元素仍在DOM中
+          feedbackEl.classList.remove('show');
+          setTimeout(() => {
+            if (feedbackEl.parentNode) {
+              feedbackEl.remove();
+            }
+          }, 300);
+          
+          if (copyBtn.parentNode) {
             copyBtn.innerHTML = originalHTML;
+            copyBtn.style.background = '';
+            copyBtn.style.color = '';
+            copyBtn.style.borderColor = '';
+            copyBtn.disabled = false;
           }
         }, 2000);
       };
@@ -722,6 +816,7 @@ export default {
       // 尝试使用现代 Clipboard API
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(code).then(onSuccess).catch((error) => {
+          console.warn('Clipboard API 失败，尝试备用方法:', error);
           this.fallbackCopyTextToClipboard(code, onSuccess, onError);
         });
       } else {
@@ -1046,8 +1141,10 @@ export default {
         
         // 使用$nextTick确保DOM更新完成后再处理
         this.$nextTick(() => {
-            this.setupCopyButtons();
-            // 移除applyCodeHighlighting - markdown-it已在renderMarkdown中完成语法高亮
+            // 延迟一点时间确保DOM完全渲染
+            setTimeout(() => {
+                this.setupCopyButtons();
+            }, 100);
         });
         
         // 保留文件内容以便后续预览
@@ -1112,12 +1209,22 @@ export default {
       const originalContent = triggerBtn?.innerHTML || '';
       const feedbackEl = document.createElement('div');
       feedbackEl.className = 'copy-feedback';
-      document.body.appendChild(feedbackEl);
+      
       if (triggerBtn) {
-        const rect = triggerBtn.getBoundingClientRect();
-        feedbackEl.style.top = `${rect.top - 30}px`;
-        feedbackEl.style.left = `${rect.left + rect.width / 2 - 50}px`;
+        // 使用相对定位避免页面抖动
+        const container = triggerBtn.closest('.message') || triggerBtn.parentElement;
+        container.style.position = 'relative';
+        container.appendChild(feedbackEl);
+        
+        // 相对于容器定位
+        feedbackEl.style.position = 'absolute';
+        feedbackEl.style.top = '-35px';
+        feedbackEl.style.right = '10px';
+        feedbackEl.style.transform = 'translateY(15px) scale(0.9)';
+        feedbackEl.style.zIndex = '1000';
       } else {
+        // 如果没有触发按钮，使用固定定位
+        document.body.appendChild(feedbackEl);
         feedbackEl.style.top = '20px';
         feedbackEl.style.right = '20px';
       }
@@ -3170,29 +3277,42 @@ button.active::before {
 .copy-feedback {
   position: fixed;
   min-width: 120px;
-  padding: 8px 16px;
-  border-radius: 4px;
+  padding: 10px 18px;
+  border-radius: 8px;
   background: var(--secondary-color);
   color: white;
   text-align: center;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  z-index: 9999;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+  z-index: 10000;
   opacity: 0;
-  transform: translateY(10px);
+  transform: translateY(15px) scale(0.9);
   pointer-events: none;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .copy-feedback.show {
   opacity: 1;
-  transform: translateY(0);
+  transform: translateX(-50%) translateY(0) scale(1);
+}
+
+.copy-feedback.show.message-feedback {
+  transform: translateY(0) scale(1);
 }
 
 .copy-feedback.success {
-  background: #48bb78;
+  background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
+  border-color: rgba(72, 187, 120, 0.3);
+  box-shadow: 0 6px 20px rgba(72, 187, 120, 0.4);
 }
 
 .copy-feedback.error {
-  background: #f56565;
+  background: linear-gradient(135deg, #f56565 0%, #e53e3e 100%);
+  border-color: rgba(245, 101, 101, 0.3);
+  box-shadow: 0 6px 20px rgba(245, 101, 101, 0.4);
 }
 
 /* 按钮状态样式 */
