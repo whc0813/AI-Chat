@@ -12,7 +12,7 @@
         @delete-conversation="deleteConversation"
         @export-chats="exportChats"
         @clear-all-chats="clearAllChats"
-        @export-current-chat="exportCurrentChat"
+        @export-chat="exportChat"
         @rename-conversation="renameConversation"
         @sidebar-toggle="handleSidebarToggle"
         @open-settings="openSettingsModal"
@@ -179,15 +179,259 @@ export default {
         this.currentConversationIndex = Math.max(0, this.currentConversationIndex - 1);
       }
     },
-    exportCurrentChat() {
+    exportChat(format = 'json') {
       const currentConv = this.conversations[this.currentConversationIndex];
-      const dataStr = JSON.stringify([currentConv], null, 2);
-      const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
-      const exportFileDefaultName = `chat_export_${new Date().toISOString().slice(0,10)}.json`;
+      if (!currentConv) return;
+
+      // 检查对话是否为空
+      if (!currentConv.messages || currentConv.messages.length === 0) {
+        alert('当前对话为空，无法导出');
+        return;
+      }
+
+      // 使用对话标题作为文件名，清理特殊字符
+      const safeTitle = currentConv.title.replace(/[<>:"/\\|?*]/g, '_').trim();
+      const baseFileName = safeTitle || 'untitled_chat';
+
+      switch (format) {
+        case 'json':
+          this.exportToJson(currentConv, baseFileName);
+          break;
+        case 'md':
+          this.exportToMarkdown(currentConv, baseFileName);
+          break;
+        case 'html':
+          this.exportToHtml(currentConv, baseFileName);
+          break;
+        case 'pdf':
+          this.exportToPdf(currentConv, baseFileName);
+          break;
+        default:
+          this.exportToJson(currentConv, baseFileName);
+      }
+    },
+
+    exportToJson(conversation, fileName) {
+      const dataStr = JSON.stringify([conversation], null, 2);
+      const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(dataStr);
+      this.downloadFile(dataUri, `${fileName}.json`);
+    },
+
+    exportToMarkdown(conversation) {
+      let markdown = `# ${conversation.title}\n\n`;
+      markdown += `**创建时间:** ${new Date(conversation.createdAt).toLocaleString()}\n`;
+      markdown += `**更新时间:** ${new Date(conversation.updatedAt).toLocaleString()}\n`;
+      markdown += `**模型:** ${conversation.model}\n\n`;
+      markdown += '---\n\n';
+
+      conversation.messages.forEach((message, index) => {
+        if (message.role === 'user') {
+          markdown += `**用户:**\n\n${message.content}\n\n`;
+        } else if (message.role === 'assistant') {
+          markdown += `**AI助手:**\n\n`;
+          if (message.type === 'combined' && message.thinking) {
+            markdown += `<details>\n<summary>思考过程</summary>\n\n${message.thinking}\n\n</details>\n\n`;
+          }
+          markdown += `${message.content}\n\n`;
+        }
+        if (index < conversation.messages.length - 1) {
+          markdown += '---\n\n';
+        }
+      });
+
+      const safeTitle = conversation.title.replace(/[<>:"/\\|?*]/g, '_').trim();
+      const fileName = safeTitle || 'untitled_chat';
+      const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      this.downloadFile(url, `${fileName}.md`);
+      URL.revokeObjectURL(url);
+    },
+
+    exportToHtml(conversation) {
+      const markdownRenderer = this.$refs.chatContainer?.markdownRenderer;
+      if (!markdownRenderer) {
+        alert('Markdown渲染器未准备就绪，请稍后再试');
+        return;
+      }
+
+      let html = `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${conversation.title}</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; max-width: 800px; margin: 0 auto; padding: 20px; color: #333; }
+    .header { border-bottom: 2px solid #eee; padding-bottom: 20px; margin-bottom: 30px; }
+    .message { margin-bottom: 30px; padding: 20px; border-radius: 8px; }
+    .user-message { background-color: #f0f9ff; border-left: 4px solid #0ea5e9; }
+    .assistant-message { background-color: #f9fafb; border-left: 4px solid #10b981; }
+    .role { font-weight: bold; margin-bottom: 10px; color: #374151; }
+    .thinking { background-color: #fef3c7; padding: 15px; border-radius: 6px; margin-bottom: 15px; border-left: 4px solid #f59e0b; }
+    .thinking-title { font-weight: bold; margin-bottom: 8px; color: #92400e; }
+    pre { background-color: #f4f4f4; padding: 15px; border-radius: 6px; overflow-x: auto; }
+    code { background-color: #f4f4f4; padding: 2px 4px; border-radius: 3px; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>${conversation.title}</h1>
+    <p><strong>创建时间:</strong> ${new Date(conversation.createdAt).toLocaleString()}</p>
+    <p><strong>更新时间:</strong> ${new Date(conversation.updatedAt).toLocaleString()}</p>
+    <p><strong>模型:</strong> ${conversation.model}</p>
+  </div>
+`;
+
+      conversation.messages.forEach(message => {
+        const messageClass = message.role === 'user' ? 'user-message' : 'assistant-message';
+        const roleText = message.role === 'user' ? '用户' : 'AI助手';
+        
+        html += `  <div class="message ${messageClass}">
+`;
+        html += `    <div class="role">${roleText}</div>
+`;
+        
+        if (message.role === 'assistant' && message.type === 'combined' && message.thinking) {
+          html += `    <div class="thinking">
+`;
+          html += `      <div class="thinking-title">思考过程:</div>
+`;
+          html += `      <div>${markdownRenderer.render(message.thinking)}</div>
+`;
+          html += `    </div>
+`;
+        }
+        
+        html += `    <div>${markdownRenderer.render(message.content)}</div>
+`;
+        html += `  </div>
+`;
+      });
+
+      html += `</body>
+</html>`;
+
+      const safeTitle = conversation.title.replace(/[<>:"/\\|?*]/g, '_').trim();
+      const fileName = safeTitle || 'untitled_chat';
+      const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      this.downloadFile(url, `${fileName}.html`);
+      URL.revokeObjectURL(url);
+    },
+
+    async exportToPdf(conversation) {
+      try {
+        // 动态导入库
+        const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([
+          import('jspdf'),
+          import('html2canvas')
+        ]);
+
+        // 获取HTML内容
+        const markdownRenderer = this.$refs.chatContainer?.markdownRenderer;
+        if (!markdownRenderer) {
+          alert('Markdown渲染器未准备就绪，请稍后再试');
+          return;
+        }
+
+        // 创建临时容器
+        const tempDiv = document.createElement('div');
+        tempDiv.style.position = 'absolute';
+        tempDiv.style.left = '-9999px';
+        tempDiv.style.top = '0';
+        tempDiv.style.width = '800px';
+        tempDiv.style.padding = '20px';
+        tempDiv.style.backgroundColor = 'white';
+        tempDiv.style.fontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+        tempDiv.style.lineHeight = '1.6';
+        tempDiv.style.color = '#333';
+
+        // 生成内容
+        let content = `<div style="border-bottom: 2px solid #eee; padding-bottom: 20px; margin-bottom: 30px;">`;
+        content += `<h1 style="margin: 0 0 15px 0;">${conversation.title}</h1>`;
+        content += `<p><strong>创建时间:</strong> ${new Date(conversation.createdAt).toLocaleString()}</p>`;
+        content += `<p><strong>更新时间:</strong> ${new Date(conversation.updatedAt).toLocaleString()}</p>`;
+        content += `<p><strong>模型:</strong> ${conversation.model}</p>`;
+        content += `</div>`;
+
+        conversation.messages.forEach(message => {
+          const bgColor = message.role === 'user' ? '#f0f9ff' : '#f9fafb';
+          const borderColor = message.role === 'user' ? '#0ea5e9' : '#10b981';
+          const roleText = message.role === 'user' ? '用户' : 'AI助手';
+          
+          content += `<div style="margin-bottom: 30px; padding: 20px; border-radius: 8px; background-color: ${bgColor}; border-left: 4px solid ${borderColor};">`;
+          content += `<div style="font-weight: bold; margin-bottom: 10px; color: #374151;">${roleText}</div>`;
+          
+          if (message.role === 'assistant' && message.type === 'combined' && message.thinking) {
+            content += `<div style="background-color: #fef3c7; padding: 15px; border-radius: 6px; margin-bottom: 15px; border-left: 4px solid #f59e0b;">`;
+            content += `<div style="font-weight: bold; margin-bottom: 8px; color: #92400e;">思考过程:</div>`;
+            content += `<div>${markdownRenderer.render(message.thinking)}</div>`;
+            content += `</div>`;
+          }
+          
+          content += `<div>${markdownRenderer.render(message.content)}</div>`;
+          content += `</div>`;
+        });
+
+        tempDiv.innerHTML = content;
+        document.body.appendChild(tempDiv);
+
+        // 使用html2canvas生成图片
+        const canvas = await html2canvas(tempDiv, {
+          scale: 2,
+          useCORS: true,
+          allowTaint: true,
+          backgroundColor: '#ffffff'
+        });
+
+        // 移除临时元素
+        document.body.removeChild(tempDiv);
+
+        // 创建PDF
+        const pdf = new jsPDF({
+          orientation: 'portrait',
+          unit: 'mm',
+          format: 'a4'
+        });
+
+        const imgData = canvas.toDataURL('image/png');
+        const imgWidth = 210; // A4宽度
+        const pageHeight = 295; // A4高度
+        const imgHeight = (canvas.height * imgWidth) / canvas.width;
+        let heightLeft = imgHeight;
+        let position = 0;
+
+        // 添加第一页
+        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight;
+
+        // 如果内容超过一页，添加更多页面
+        while (heightLeft >= 0) {
+          position = heightLeft - imgHeight;
+          pdf.addPage();
+          pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+          heightLeft -= pageHeight;
+        }
+
+        // 下载PDF
+         const safeTitle = conversation.title.replace(/[<>:"/\\|?*]/g, '_').trim();
+         const fileName = safeTitle || 'untitled_chat';
+         pdf.save(`${fileName}.pdf`);
+
+      } catch (error) {
+        console.error('PDF导出失败:', error);
+        alert('PDF导出失败，请稍后再试');
+      }
+    },
+
+    downloadFile(url, fileName) {
       const linkElement = document.createElement('a');
-      linkElement.setAttribute('href', dataUri);
-      linkElement.setAttribute('download', exportFileDefaultName);
+      linkElement.setAttribute('href', url);
+      linkElement.setAttribute('download', fileName);
+      linkElement.style.display = 'none';
+      document.body.appendChild(linkElement);
       linkElement.click();
+      document.body.removeChild(linkElement);
     },
     handleSendMessage(message) {
       const currentConv = this.conversations[this.currentConversationIndex];

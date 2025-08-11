@@ -1411,6 +1411,24 @@ export default {
         return;
         }
         try {
+        // 获取 API 密钥
+        const deepseekKey = localStorage.getItem('deepseek_api_key');
+        const glmKey = localStorage.getItem('glm_api_key');
+        
+        // 检查密钥是否存在
+        if (!deepseekKey || !glmKey) {
+            console.warn('API 密钥未配置，跳过标题生成');
+            const userMessage = this.messages.find(m => m.role === 'user')?.content || '';
+            const fallbackTitle = userMessage.slice(0, 20) + (userMessage.length > 20 ? '...' : '');
+            this.$emit('update-title', fallbackTitle);
+            return;
+        }
+        
+        const apiKeys = {
+            deepseek: deepseekKey,
+            glm: glmKey
+        };
+        
         let finalTitle = ''; // 使用局部变量累积标题
         // 开始时重置显示标题
         this.displayTitle = '';
@@ -1427,7 +1445,8 @@ export default {
                 // 更新本地数据属性，而不是emit事件
                 this.displayTitle = finalTitle.trim(); 
             }
-            }
+            },
+            apiKeys
         );
         
         // 完成后，向父组件emit最终标题

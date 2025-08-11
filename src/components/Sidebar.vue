@@ -65,7 +65,21 @@
     <div class="sidebar-footer" v-if="!isCollapsed">
       <button @click="openSettings" :disabled="isGenerating">⚙️ 设置</button>
       <button @click="exportChats" :disabled="isGenerating">导出所有对话</button>
-      <button @click="exportCurrentChat" :disabled="isGenerating">导出当前对话</button>
+      
+      <!-- 导出当前对话选项 -->
+      <div class="export-group">
+        <div class="export-header" @click="toggleExportCollapse">
+          <span class="export-label">导出当前对话</span>
+          <span class="collapse-arrow" :class="{ 'expanded': !isExportCollapsed }">▼</span>
+        </div>
+        <div class="export-buttons" :class="{ 'collapsed': isExportCollapsed }">
+          <button @click="exportChat('json')" :disabled="isGenerating" class="export-btn" title="导出为JSON">JSON</button>
+          <button @click="exportChat('md')" :disabled="isGenerating" class="export-btn" title="导出为Markdown">MD</button>
+          <button @click="exportChat('html')" :disabled="isGenerating" class="export-btn" title="导出为HTML">HTML</button>
+          <button @click="exportChat('pdf')" :disabled="isGenerating" class="export-btn" title="导出为PDF">PDF</button>
+        </div>
+      </div>
+      
       <button @click="clearAllChats" :disabled="isGenerating">清空所有对话</button>
     </div>
 
@@ -91,7 +105,8 @@ export default {
       isCollapsed: JSON.parse(localStorage.getItem('sidebarCollapsed') || 'false'),
       searchQuery: '',
       renamingIndex: null,
-      newTitle: ''
+      newTitle: '',
+      isExportCollapsed: JSON.parse(localStorage.getItem('exportCollapsed') || 'true')
     };
   },
   mounted() {
@@ -145,8 +160,8 @@ export default {
       this.$emit('clear-all-chats');
       localStorage.removeItem('conversations');
     },
-    exportCurrentChat() {
-      this.$emit('export-current-chat');
+    exportChat(format) {
+      this.$emit('export-chat', format);
     },
     openSettings() {
       this.$emit('open-settings');
@@ -176,6 +191,10 @@ export default {
       }
       this.renamingIndex = null;
       this.newTitle = '';
+    },
+    toggleExportCollapse() {
+      this.isExportCollapsed = !this.isExportCollapsed;
+      localStorage.setItem('exportCollapsed', this.isExportCollapsed);
     }
   },
   computed: {
@@ -448,6 +467,85 @@ export default {
   content: "→";
   margin-right: 8px;
   opacity: 0.6;
+}
+
+/* 导出组样式 */
+.export-group {
+  margin: 8px 0;
+}
+
+.export-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: var(--secondary-color);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.export-header:hover {
+  background: var(--border-color);
+}
+
+.export-label {
+  font-size: 13px;
+  color: var(--text-color);
+  font-weight: 500;
+}
+
+.collapse-arrow {
+  font-size: 12px;
+  color: var(--text-color);
+  transition: transform 0.2s ease;
+}
+
+.collapse-arrow.expanded {
+  transform: rotate(180deg);
+}
+
+.export-buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-top: 8px;
+  overflow: hidden;
+  transition: all 0.3s ease;
+  max-height: 200px;
+  opacity: 1;
+}
+
+.export-buttons.collapsed {
+  max-height: 0;
+  opacity: 0;
+  margin-top: 0;
+}
+
+.export-btn {
+  padding: 8px 10px !important;
+  font-size: 12px !important;
+  border-radius: 6px !important;
+  margin: 0 !important;
+  background: var(--primary-color) !important;
+  color: white !important;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.export-btn:hover:not(:disabled) {
+  background: var(--primary-hover) !important;
+  transform: translateY(-1px);
+}
+
+.export-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.export-btn::before {
+  display: none;
 }
 
 /* 折叠状态下的样式 */
@@ -733,6 +831,80 @@ button:disabled {
     margin: 6px 0;
     background: var(--secondary-color);
     font-weight: 500;
+  }
+
+  .export-group {
+    margin: 12px 0;
+  }
+
+  .export-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background: var(--secondary-color);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    user-select: none;
+  }
+
+  .export-header:hover {
+    background: var(--border-color);
+  }
+
+  .export-label {
+    font-size: 14px;
+    color: var(--text-primary);
+    font-weight: 500;
+  }
+
+  .collapse-arrow {
+    font-size: 12px;
+    color: var(--text-secondary);
+    transition: transform 0.2s ease;
+  }
+
+  .collapse-arrow.expanded {
+    transform: rotate(180deg);
+  }
+
+  .export-buttons {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 8px;
+    overflow: hidden;
+    transition: all 0.3s ease;
+    max-height: 200px;
+    opacity: 1;
+  }
+
+  .export-buttons.collapsed {
+    max-height: 0;
+    opacity: 0;
+    margin-top: 0;
+  }
+
+  .export-btn {
+    padding: 10px 12px !important;
+    font-size: 13px !important;
+    border-radius: 8px !important;
+    margin: 0 !important;
+    background: var(--primary-color) !important;
+    color: white !important;
+    font-weight: 500;
+    transition: all 0.2s ease;
+  }
+
+  .export-btn:hover:not(:disabled) {
+    background: var(--primary-hover) !important;
+    transform: translateY(-1px);
+  }
+
+  .export-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
 
   .collapsed-info {
