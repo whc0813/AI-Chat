@@ -6,6 +6,7 @@
         <span class="menu-icon">☰</span>
       </button>
       
+      
       <!-- 模型选择器 -->
       <div class="title-model-selector" @click="toggleModelDropdown" :class="{ 'open': showModelDropdown }">
         <div class="current-model">
@@ -221,70 +222,7 @@
       </div>
     </div>
 
-    <div class="input-area">
-      <div class="input-content">
-      <div v-if="selectedFile" class="file-preview">
-        <div class="file-preview-header">
-          <span class="file-icon">{{ getFileIcon(selectedFile.name) }}</span>
-          <span class="file-preview-name">{{ selectedFile.name }}</span>
-          <button @click="removeFile" class="remove-file-btn">×</button>
-        </div>
-        
-        <!-- 文件信息和预览按钮 -->
-        <div class="file-preview-content">
-          <div class="file-info">
-            <p>文件大小: {{ formatFileSize(selectedFile.size) }}</p>
-            <p>文件类型: {{ selectedFile.type || '未知' }}</p>
-            <p>最后修改: {{ formatDate(selectedFile.lastModified) }}</p>
-            <button @click="openFilePreview(selectedFile)" class="preview-btn">点击预览</button>
-          </div>
-        </div>
-      </div>
 
-      <div class="input-controls">
-        <button class="add-btn" @click="triggerFileUpload" :disabled="isGenerating" title="添加文件">
-          +
-        </button>
-        <input
-          v-model="userInput"
-          @keyup.enter="handleSend"
-          placeholder="询问任何问题"
-          :disabled="isGenerating"
-          style="width: 100%;"
-        />
-        <input
-          type="file"
-          ref="fileInput"
-          @change="handleFileChange"
-          style="display: none"
-          accept=".doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.txt,text/plain"
-        />
-        <div class="button-group">
-          <button 
-            class="action-btn"
-            @click="toggleVoiceInput"
-            :class="{ active: isSpeechRecognizing, disabled: isGenerating }"
-            :disabled="!isSpeechSupported || isGenerating"
-            title="语音输入">
-            🎤
-          </button>
-          <button
-            class="action-btn"
-            @click="isGenerating ? stopGeneration() : handleSend()"
-            :class="{ 'stop-btn': isGenerating }"
-            title="发送消息">
-            ⚡
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <div v-if="isSpeechRecognizing" class="listening-indicator">
-      正在聆听中...
-    </div>
-    <div v-if="speechError" class="speech-error-indicator">
-      {{ speechError }}
-    </div>
   </div>
   
   <!-- 文件预览模态框 -->
@@ -336,8 +274,7 @@
       </div>
     </div>
   </div>
- </div>
- </template>
+</template>
 
 <script>
 import { chatWithAI, cancelAllRequests } from '../api/chat';
@@ -359,6 +296,14 @@ export default {
     currentTitle: {
       type: String,
       default: ''
+    },
+    userInput: {
+      type: String,
+      default: ''
+    },
+    isGenerating: {
+      type: Boolean,
+      default: false
     }
   },
   data() {
@@ -381,13 +326,7 @@ export default {
     });
 
     return {
-      userInput: '',
       selectedModel: this.currentModel,
-      isSpeechRecognizing: false,
-      recognition: null,
-      stopTimer: null,
-      isSpeechSupported: false,
-      speechError: '',
       isStreaming: false,
       currentThinking: '',
       currentAnswer: '',
@@ -397,7 +336,6 @@ export default {
       _lastRenderedLength: 0,
       expandedThinking: {},
       isCurrentThinkingExpanded: true,
-      isGenerating: false,
       requestStartTime: null,
       currentRequestStats: null,
       isDarkMode: false,
@@ -481,7 +419,7 @@ export default {
     
     // 清理复制按钮事件监听器
     if (this._copyButtonsSetup && this._copyButtonHandler) {
-      const messagesContainer = this.$el.querySelector('.chat-messages');
+      const messagesContainer = this.$el && this.$el.querySelector ? this.$el.querySelector('.chat-messages') : null;
       if (messagesContainer) {
         messagesContainer.removeEventListener('click', this._copyButtonHandler);
       }
@@ -507,7 +445,7 @@ export default {
     
     // 清理复制按钮事件监听器
     if (this._copyButtonsSetup && this._copyButtonHandler) {
-      const messagesContainer = this.$el.querySelector('.messages-container');
+      const messagesContainer = this.$el && this.$el.querySelector ? this.$el.querySelector('.messages-container') : null;
       if (messagesContainer) {
         messagesContainer.removeEventListener('click', this._copyButtonHandler);
       }
@@ -521,17 +459,9 @@ export default {
     }
     this._lastRenderedLength = 0;
     
-    // 停止语音识别
-    if (this.recognition && this.isSpeechRecognizing) {
-      try {
-        this.recognition.stop();
-      } catch (error) {
-        console.error('停止语音识别失败:', error);
-      }
-    }
+
   },
   mounted() {
-        this.initSpeechRecognition();
         // 添加点击外部关闭下拉框的事件监听
         document.addEventListener('click', this.handleClickOutside);
         this.$nextTick(() => {
@@ -542,7 +472,7 @@ export default {
     },
   methods: {
     sendExampleQuestion(question) {
-      this.userInput = question;
+      this.$emit('send-user-message', question);
     },
     
 
@@ -684,22 +614,24 @@ export default {
     setupCopyButtons(retryCount = 0) {
       // 移除旧的事件监听器
       if (this._copyButtonsSetup) {
-        const messagesContainer = this.$el.querySelector('.chat-messages');
+        const messagesContainer = this.$el && this.$el.querySelector ? this.$el.querySelector('.chat-messages') : null;
         if (messagesContainer && this._copyButtonHandler) {
           messagesContainer.removeEventListener('click', this._copyButtonHandler);
         }
       }
       
       // 使用事件委托，但限制在消息容器内
-      const messagesContainer = this.$el.querySelector('.chat-messages');
+      const messagesContainer = this.$el && this.$el.querySelector ? this.$el.querySelector('.chat-messages') : null;
       if (!messagesContainer) {
         // 防止无限递归，最多重试5次
         if (retryCount < 5) {
-          this.$nextTick(() => {
+          // 增加延迟，给DOM更多时间渲染
+          setTimeout(() => {
             this.setupCopyButtons(retryCount + 1);
-          });
+          }, 50 * (retryCount + 1)); // 递增延迟
         } else {
-          console.warn('无法找到消息容器，停止设置复制按钮');
+          // 静默处理，避免控制台警告
+          return;
         }
         return;
       }
@@ -863,10 +795,16 @@ export default {
         this.modalPreviewError = null;
         this.$refs.fileInput.value = '';
     },
-    async handleSend() {
+    // 新的sendMessage方法，供App.vue调用
+    async sendMessage(userText, file) {
         if (this.isGenerating) return;
-        const userText = this.userInput.trim();
-        const file = this.selectedFile;
+        if (!userText && !file) return;
+        
+        return await this.handleSend(userText, file);
+    },
+    
+    async handleSend(userText = '', file = null) {
+        if (this.isGenerating) return;
         if (!userText && !file) return;
 
         // 首先检查 API 密钥
@@ -879,7 +817,6 @@ export default {
             return;
         }
 
-        this.isGenerating = true;
         this.$emit('generating-changed', true);
         this.isStreaming = true;
         this.currentThinking = '';
@@ -910,7 +847,6 @@ export default {
                 };
             } catch (e) {
                 console.error("文件读取失败:", e);
-                this.isGenerating = false;
                 this.$emit('generating-changed', false);
                 this.isStreaming = false;
                 return;
@@ -918,9 +854,6 @@ export default {
         }
 
         this.$emit('send-message', userMessageForUI);
-        
-        this.userInput = '';
-        this.removeFile();
 
         await this.$nextTick();
 
@@ -977,7 +910,6 @@ export default {
                 }
             }
         } finally {
-            this.isGenerating = false;
             this.$emit('generating-changed', false);
             this.isStreaming = false;
             
@@ -1053,7 +985,6 @@ export default {
         if (this.isGenerating) return;
         const lastUserMessage = this.messages.filter(m => m.role === 'user').pop();
         if (lastUserMessage) {
-            this.isGenerating = true;
             this.$emit('generating-changed', true);
             this.isStreaming = true;
             this.currentThinking = '';
@@ -1083,7 +1014,6 @@ export default {
                 // 检查密钥是否存在
                 if (!deepseekKey || !glmKey) {
                     alert('请先在设置中配置您的 API 密钥。');
-                    this.isGenerating = false;
                     this.$emit('generating-changed', false);
                     this.isStreaming = false;
                     return;
@@ -1137,7 +1067,6 @@ export default {
                     }
                 }
             } finally {
-                this.isGenerating = false;
                 this.$emit('generating-changed', false);
                 this.isStreaming = false;
                 
@@ -1220,7 +1149,6 @@ export default {
       },
     stopGeneration() {
         cancelAllRequests();
-        this.isGenerating = false;
         this.$emit('generating-changed', false);
         this.isStreaming = false;
         const lastMessage = this.messages[this.messages.length - 1];
@@ -1348,61 +1276,8 @@ export default {
       
       document.body.removeChild(textArea);
     },
-    initSpeechRecognition() {
-      if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
-        this.isSpeechSupported = false;
-        console.warn('您的浏览器不支持语音识别API');
-        return;
-      }
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-      this.recognition = new SpeechRecognition();
-      this.recognition.lang = 'zh-CN';
-      this.recognition.interimResults = false;
-      this.recognition.continuous = false;
-      this.isSpeechSupported = true;
-      this.recognition.onstart = () => { this.isSpeechRecognizing = true; this.speechError = ''; };
-      this.recognition.onresult = (event) => { const transcript = event.results[0][0].transcript; this.userInput = this.userInput ? this.userInput + ' ' + transcript : transcript; };
-      this.recognition.onerror = (event) => {
-        let errorMessage = '发生未知错误，语音识别失败。';
-        switch (event.error) {
-          case 'no-speech': errorMessage = '未检测到语音，请重试。'; break;
-          case 'audio-capture': errorMessage = '无法访问麦克风，请检查设备是否连接正常。'; break;
-          case 'not-allowed': errorMessage = '语音权限被拒绝，请在浏览器设置中允许麦克风访问。'; break;
-          case 'network': errorMessage = '网络错误，语音识别服务不可用。'; break;
-        }
-        this.speechError = errorMessage;
-        this.stopVoiceInput();
-        setTimeout(() => this.speechError = '', 5000);
-      };
-      this.recognition.onend = () => { this.isSpeechRecognizing = false; if (this.stopTimer) { clearTimeout(this.stopTimer); this.stopTimer = null; } };
-    },
-    toggleVoiceInput() {
-      if (this.debounceTimer) { clearTimeout(this.debounceTimer); }
-      this.debounceTimer = setTimeout(() => {
-        if (this.isSpeechRecognizing) { this.stopVoiceInput(); } else { this.startVoiceInput(); }
-        this.debounceTimer = null;
-      }, 200);
-    },
-    startVoiceInput() {
-      if (!this.recognition || this.isSpeechRecognizing) { return; }
-      this.speechError = '';
-      try {
-        this.isSpeechRecognizing = true;
-        this.recognition.start();
-        this.stopTimer = setTimeout(() => { if (this.isSpeechRecognizing) { this.stopVoiceInput(); } }, 60000);
-      } catch (error) {
-        this.isSpeechRecognizing = false;
-        this.speechError = '无法启动语音识别服务。';
-        setTimeout(() => this.speechError = '', 5000);
-      }
-    },
-    stopVoiceInput() {
-      if (this.recognition && this.isSpeechRecognizing) {
-        try { this.recognition.stop(); } catch (error) { console.error('停止语音识别失败:', error); }
-      }
-      this.isSpeechRecognizing = false;
-      if (this.stopTimer) { clearTimeout(this.stopTimer); this.stopTimer = null; }
-    },
+
+
     async generateTitleFromConversation() {
         if (!this.currentAnswer && !this.currentThinking) {
         const userMessage = this.messages.find(m => m.role === 'user')?.content || '';
@@ -1482,6 +1357,7 @@ export default {
         return model ? model.description : '未知模型';
     },
     handleClickOutside(event) {
+        if (!this.$el || !this.$el.querySelector) return;
         const modelSelector = this.$el.querySelector('.title-model-selector');
         if (modelSelector && !modelSelector.contains(event.target)) {
             this.showModelDropdown = false;
@@ -1628,6 +1504,12 @@ export default {
       },
       
       // applyCodeHighlighting方法已删除 - markdown-it在renderMarkdown中完成所有语法高亮
+      
+    // 发送示例问题
+    sendExampleQuestion(question) {
+      // 通过emit事件通知父组件发送消息
+      this.$emit('send-user-message', question);
+    },
 
   },
 };
@@ -1831,94 +1713,9 @@ export default {
 }
 
 /* 现有样式... */
-.input-area {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  padding: 0;
-  background: var(--gradient-secondary);
-  border-top: 1px solid var(--border-color);
-  position: relative;
-  backdrop-filter: blur(20px);
-  border-radius: 0 0 16px 16px;
-}
 
 
 
-
-
-.input-area.centered {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 95%;
-  max-width: 900px;
-  border-radius: 24px;
-  border: none;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.08);
-  z-index: 20;
-  flex-direction: column;
-  gap: 24px;
-  padding: 32px;
-  background: var(--card-bg);
-  backdrop-filter: blur(20px);
-}
-
-.input-area.centered .model-selector {
-  align-self: center;
-  background: var(--secondary-color);
-  padding: 12px 20px;
-  border-radius: 12px;
-  border: 1px solid var(--border-color);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-}
-
-.input-area.centered .model-selector select {
-  padding: 12px 16px;
-  font-size: 15px;
-  font-weight: 600;
-  border-radius: 8px;
-  border: none;
-  background: var(--input-bg);
-  min-width: 180px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
-}
-
-.input-area.centered .model-selector label {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-color);
-  margin-right: 12px;
-}
-
-.input-area.centered input {
-  text-align: left;
-  font-size: 16px;
-  padding: 18px 24px;
-  border-radius: 16px;
-  border: 2px solid var(--border-color);
-  background: var(--input-bg);
-  min-height: 56px;
-  resize: none;
-  transition: all 0.3s ease;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-}
-
-.button-group {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  flex-shrink: 0;
-}
-
-.input-area.centered .button-group {
-  display: flex;
-  justify-content: center;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-top: 8px;
-}
 .model-selector {
   flex-shrink: 0;
   min-width: 150px;
@@ -2450,7 +2247,7 @@ export default {
 .chat-messages {
   flex-grow: 1;
   overflow-y: auto;
-  padding: 40px; /* 增加整体内边距 */
+  padding: 40px 40px 120px 40px; /* 增加足够的底部内边距，防止被输入框遮挡 */
   background: var(--bg-color);
   scrollbar-width: thin;
   scrollbar-color: var(--primary-color) transparent;
@@ -3637,6 +3434,8 @@ button[disabled]:hover {
   display: none;
 }
 
+
+
 /* 移动端响应式设计 - 优化版本 */
 @media (max-width: 768px) {
   .preview-modal {
@@ -4176,6 +3975,8 @@ button[disabled]:hover {
   .mobile-menu-btn .menu-icon {
     line-height: 1;
   }
+
+
 
   .theme-toggle-btn {
     position: absolute !important;
