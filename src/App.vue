@@ -745,8 +745,8 @@ export default {
     },
     
     async handleSend() {
-      // 从 contenteditable div 获取文本内容
-      const userText = this.$refs.textInput ? this.$refs.textInput.textContent.trim() || '' : '';
+      // 优先使用userInput（来自示例问题），否则从 contenteditable div 获取文本内容
+      const userText = this.userInput || (this.$refs.textInput ? this.$refs.textInput.textContent.trim() || '' : '');
       
       if (!userText && !this.selectedFile) return;
       
