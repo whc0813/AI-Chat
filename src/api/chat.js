@@ -3,14 +3,15 @@ import OpenAI from 'openai';
 
 // GLM-4-Flash 配置
 const GLM_API_URL = "https://open.bigmodel.cn/api/paas/v4/chat/completions";
-const GLM_API_KEY = "e36c9c358fb245e0812dfa05454c83fd.MOrtGyscJ5tH6s0D";
 
-// DeepSeek 配置
-const deepseek = new OpenAI({
-  baseURL: 'https://api.deepseek.com',
-  apiKey: 'sk-5d5ac47824ef4d889d5bb1849040182f', 
-  dangerouslyAllowBrowser: true
-});
+// DeepSeek 客户端生成函数
+const getDeepSeekClient = (apiKey) => {
+  return new OpenAI({
+    baseURL: 'https://api.deepseek.com',
+    apiKey: apiKey,
+    dangerouslyAllowBrowser: true
+  });
+};
 
 // 创建取消令牌源
 const cancelTokenSources = {
@@ -30,7 +31,7 @@ export const cancelAllRequests = () => {
   }
 };
 
-export const streamWithGLM = async (messages, onChunk) => {
+export const streamWithGLM = async (messages, onChunk, apiKey) => {
   let abortController = null;
   let tokenStats = { input: 0, output: 0, total: 0 };
   
@@ -41,7 +42,7 @@ export const streamWithGLM = async (messages, onChunk) => {
     const response = await fetch(GLM_API_URL, {
       method: 'POST',
       headers: {
-        "Authorization": `Bearer ${GLM_API_KEY}`,
+        "Authorization": `Bearer ${apiKey}`,
         "Content-Type": "application/json",
         "Accept": "text/event-stream"
       },
@@ -111,14 +112,16 @@ export const streamWithGLM = async (messages, onChunk) => {
 };
 
 // DeepSeek 流式调用
-export const streamWithDeepSeek = async (messages, model, onChunk) => {
+export const streamWithDeepSeek = async (messages, model, onChunk, apiKey) => {
   let tokenStats = { input: 0, output: 0, total: 0 };
   
   try {
     // 创建AbortController
     cancelTokenSources.deepseek = new AbortController();
     
-    const stream = await deepseek.chat.completions.create({
+    const deepseekClient = getDeepSeekClient(apiKey);
+    
+    const stream = await deepseekClient.chat.completions.create({
       messages: messages,
       model: model,
       stream: true,
@@ -186,10 +189,10 @@ export const summarizeTitle = async (messages) => {
 };
 
 // 统一流式调用方法
-export const chatWithAI = async (messages, model, onChunk) => {
+export const chatWithAI = async (messages, model, onChunk, apiKeys) => {
   if (model.startsWith('glm-')) {
-    return await streamWithGLM(messages, onChunk);
+    return await streamWithGLM(messages, onChunk, apiKeys.glm);
   } else {
-    return await streamWithDeepSeek(messages, model, onChunk);
+    return await streamWithDeepSeek(messages, model, onChunk, apiKeys.deepseek);
   }
 };

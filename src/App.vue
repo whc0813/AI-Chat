@@ -15,6 +15,7 @@
         @export-current-chat="exportCurrentChat"
         @rename-conversation="renameConversation"
         @sidebar-toggle="handleSidebarToggle"
+        @open-settings="openSettingsModal"
       />
       <div class="main-content">
         <ChatContainer
@@ -33,18 +34,26 @@
         />
       </div>
     </div>
+    
+    <!-- 设置模态框 -->
+    <SettingsModal 
+      v-if="isSettingsModalVisible" 
+      @close="closeSettingsModal" 
+    />
   </div>
 </template>
 
 <script>
 import Sidebar from './components/Sidebar.vue';
 import ChatContainer from './components/ChatContainer.vue';
+import SettingsModal from './components/SettingsModal.vue';
 
 export default {
   name: 'App',
   components: {
     Sidebar,
-    ChatContainer
+    ChatContainer,
+    SettingsModal
   },
   data() {
     const savedConversations = JSON.parse(localStorage.getItem('conversations'));
@@ -60,7 +69,8 @@ export default {
         updatedAt: new Date().toISOString()
       }],
       currentConversationIndex: 0,
-      saveTimer: null
+      saveTimer: null,
+      isSettingsModalVisible: false
     };
   },
   // ... computed, watch, mounted, methods 等部分与上一轮回复中的代码相同，无需修改 ...
@@ -256,6 +266,12 @@ export default {
       this.$nextTick(() => {
         window.dispatchEvent(new Event('resize'));
       });
+    },
+    openSettingsModal() {
+      this.isSettingsModalVisible = true;
+    },
+    closeSettingsModal() {
+      this.isSettingsModalVisible = false;
     }
   }
 };

@@ -869,6 +869,16 @@ export default {
         const file = this.selectedFile;
         if (!userText && !file) return;
 
+        // 首先检查 API 密钥
+        const deepseekKey = localStorage.getItem('deepseek_api_key');
+        const glmKey = localStorage.getItem('glm_api_key');
+        
+        // 如果密钥不存在，提示用户并直接返回，不添加消息到聊天记录
+        if (!deepseekKey || !glmKey) {
+            alert('请先在设置中配置您的 API 密钥。');
+            return;
+        }
+
         this.isGenerating = true;
         this.$emit('generating-changed', true);
         this.isStreaming = true;
@@ -901,6 +911,7 @@ export default {
             } catch (e) {
                 console.error("文件读取失败:", e);
                 this.isGenerating = false;
+                this.$emit('generating-changed', false);
                 this.isStreaming = false;
                 return;
             }
@@ -914,6 +925,11 @@ export default {
         await this.$nextTick();
 
         try {
+            const apiKeys = {
+                deepseek: deepseekKey,
+                glm: glmKey
+            };
+            
             const messagesForAPI = this.formatMessagesForAPI(this.messages);
             const result = await chatWithAI(
                 messagesForAPI,
@@ -937,7 +953,8 @@ export default {
                             this.$forceUpdate();
                         });
                     }, 100); // 增加到100ms，减少更新频率
-                }
+                },
+                apiKeys
             );
             
             // 更新Token统计信息
@@ -1059,6 +1076,24 @@ export default {
             await this.$nextTick();
 
             try {
+                // 从 localStorage 读取 API 密钥
+                const deepseekKey = localStorage.getItem('deepseek_api_key');
+                const glmKey = localStorage.getItem('glm_api_key');
+                
+                // 检查密钥是否存在
+                if (!deepseekKey || !glmKey) {
+                    alert('请先在设置中配置您的 API 密钥。');
+                    this.isGenerating = false;
+                    this.$emit('generating-changed', false);
+                    this.isStreaming = false;
+                    return;
+                }
+                
+                const apiKeys = {
+                    deepseek: deepseekKey,
+                    glm: glmKey
+                };
+                
                 const messagesForAPI = this.formatMessagesForAPI(this.messages);
                 const result = await chatWithAI(
                     messagesForAPI,
@@ -1082,7 +1117,8 @@ export default {
                                 this.$forceUpdate();
                             });
                         }, 100); // 增加到100ms，减少更新频率
-                    }
+                    },
+                    apiKeys
                 );
                 
                 // 更新Token统计信息

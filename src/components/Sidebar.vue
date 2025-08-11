@@ -63,6 +63,7 @@
     </div>
 
     <div class="sidebar-footer" v-if="!isCollapsed">
+      <button @click="openSettings" :disabled="isGenerating">⚙️ 设置</button>
       <button @click="exportChats" :disabled="isGenerating">导出所有对话</button>
       <button @click="exportCurrentChat" :disabled="isGenerating">导出当前对话</button>
       <button @click="clearAllChats" :disabled="isGenerating">清空所有对话</button>
@@ -146,6 +147,9 @@ export default {
     },
     exportCurrentChat() {
       this.$emit('export-current-chat');
+    },
+    openSettings() {
+      this.$emit('open-settings');
     },
     handleTransitionEnd() {
       // 处理过渡动画结束事件
