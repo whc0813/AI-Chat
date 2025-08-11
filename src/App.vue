@@ -24,6 +24,7 @@
           :current-title="currentConversation.title"
           :user-input="userInput"
           :is-generating="isGenerating"
+          :reply-style="replyStyle"
           @send-message="handleSendMessage"
           @delete-message="handleDeleteMessage"
           @clear-chat="clearCurrentChat"
@@ -58,9 +59,21 @@
             </div>
 
             <div class="input-controls">
-              <button class="add-btn" @click="triggerFileUpload" :disabled="isGenerating" title="添加文件">
-                +
-              </button>
+              <div class="add-btn-container" :class="{ 'dropdown-open': showAddDropdown }">
+                <button class="add-btn" @click="toggleAddDropdown" :disabled="isGenerating" title="添加选项">
+                  +
+                </button>
+                <div v-if="showAddDropdown" class="add-dropdown" @click.stop>
+                  <div class="dropdown-item" @click="triggerFileUpload">
+                    <span class="dropdown-icon">📎</span>
+                    <span class="dropdown-text">上传文件</span>
+                  </div>
+                  <div class="dropdown-item" @click="openStyleSettings">
+                    <span class="dropdown-icon">🎨</span>
+                    <span class="dropdown-text">回复风格</span>
+                  </div>
+                </div>
+              </div>
               <div class="chat-input" @click="focusTextInput" contenteditable="true" ref="textInput" @input="handleTextInput" placeholder="询问任何问题">
               </div>
               <input
@@ -105,6 +118,48 @@
       v-if="isSettingsModalVisible" 
       @close="closeSettingsModal" 
     />
+    
+    <!-- 回复风格设置模态框 -->
+    <div v-if="showStyleModal" class="modal-overlay" @click="closeStyleModal">
+      <div class="style-modal" @click.stop>
+        <div class="style-modal-header">
+          <h3>设置回复风格</h3>
+          <button class="close-btn" @click="closeStyleModal">✕</button>
+        </div>
+        <div class="style-modal-body">
+          <div class="style-options">
+            <div class="style-option" :class="{ active: replyStyle === 'concise' }" @click="updateReplyStyle('concise')">
+              <div class="style-icon">⚡</div>
+              <div class="style-info">
+                <div class="style-name">简洁</div>
+                <div class="style-desc">简短直接的回答 (温度: 0.3)</div>
+              </div>
+            </div>
+            <div class="style-option" :class="{ active: replyStyle === 'balanced' }" @click="updateReplyStyle('balanced')">
+              <div class="style-icon">⚖️</div>
+              <div class="style-info">
+                <div class="style-name">平衡</div>
+                <div class="style-desc">详细且结构化的回答 (温度: 0.7)</div>
+              </div>
+            </div>
+            <div class="style-option" :class="{ active: replyStyle === 'detailed' }" @click="updateReplyStyle('detailed')">
+              <div class="style-icon">📚</div>
+              <div class="style-info">
+                <div class="style-name">详细</div>
+                <div class="style-desc">全面深入的解释 (温度: 0.5)</div>
+              </div>
+            </div>
+            <div class="style-option" :class="{ active: replyStyle === 'creative' }" @click="updateReplyStyle('creative')">
+              <div class="style-icon">🎨</div>
+              <div class="style-info">
+                <div class="style-name">创意</div>
+                <div class="style-desc">富有想象力和创造性 (温度: 0.9)</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -153,6 +208,11 @@ export default {
       interimTranscript: '',    // 存储实时的、未确认的文本
       autoSendTimer: null,      // 用于自动发送的计时器
       debounceTimer: null,
+      // 下拉菜单状态
+      showAddDropdown: false,
+      // 回复风格设置
+      showStyleModal: false,
+      replyStyle: localStorage.getItem('reply_style') || 'balanced'
     };
   },
   // ... computed, watch, mounted, methods 等部分与上一轮回复中的代码相同，无需修改 ...
@@ -236,6 +296,13 @@ export default {
         this.$forceUpdate(); // 强制更新以重新计算shouldShowInputArea
       };
       window.addEventListener('resize', this.handleResize);
+      
+      // 监听点击外部关闭下拉菜单（支持桌面端和移动端）
+      document.addEventListener('click', this.handleClickOutside);
+      document.addEventListener('touchstart', this.handleClickOutside);
+      
+      // 初始化语音识别
+      this.initSpeechRecognition();
   },
   beforeDestroy() {
     if (this.saveTimer) {
@@ -248,6 +315,9 @@ export default {
     if (this.handleResize) {
       window.removeEventListener('resize', this.handleResize);
     }
+    // 清理点击外部事件监听器
+    document.removeEventListener('click', this.handleClickOutside);
+    document.removeEventListener('touchstart', this.handleClickOutside);
   },
   methods: {
 
@@ -328,8 +398,8 @@ export default {
         case 'html':
           this.exportToHtml(currentConv, baseFileName);
           break;
-        case 'pdf':
-          this.exportToPdf(currentConv, baseFileName);
+        case 'image':
+          this.exportToImage(currentConv, baseFileName);
           break;
         default:
           this.exportToJson(currentConv, baseFileName);
@@ -444,13 +514,10 @@ export default {
       URL.revokeObjectURL(url);
     },
 
-    async exportToPdf(conversation) {
+    async exportToImage(conversation) {
       try {
-        // 动态导入库
-        const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([
-          import('jspdf'),
-          import('html2canvas')
-        ]);
+        // 动态导入html2canvas库
+        const html2canvas = (await import('html2canvas')).default;
 
         // 获取HTML内容
         const markdownRenderer = this.$refs.chatContainer?.markdownRenderer;
@@ -462,90 +529,82 @@ export default {
         // 创建临时容器
         const tempDiv = document.createElement('div');
         tempDiv.style.position = 'absolute';
-        tempDiv.style.left = '-9999px';
-        tempDiv.style.top = '0';
+        tempDiv.style.top = '-9999px';
+        tempDiv.style.left = '0';
         tempDiv.style.width = '800px';
         tempDiv.style.padding = '20px';
         tempDiv.style.backgroundColor = 'white';
         tempDiv.style.fontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
         tempDiv.style.lineHeight = '1.6';
         tempDiv.style.color = '#333';
+        tempDiv.style.fontSize = '14px';
+        tempDiv.style.visibility = 'visible';
+        tempDiv.style.pointerEvents = 'none';
 
         // 生成内容
-        let content = `<div style="border-bottom: 2px solid #eee; padding-bottom: 20px; margin-bottom: 30px;">`;
-        content += `<h1 style="margin: 0 0 15px 0;">${conversation.title}</h1>`;
-        content += `<p><strong>创建时间:</strong> ${new Date(conversation.createdAt).toLocaleString()}</p>`;
-        content += `<p><strong>更新时间:</strong> ${new Date(conversation.updatedAt).toLocaleString()}</p>`;
-        content += `<p><strong>模型:</strong> ${conversation.model}</p>`;
+        let content = `<div style="border-bottom: 2px solid #eee; padding-bottom: 20px; margin-bottom: 30px; page-break-inside: avoid;">`;
+        content += `<h1 style="margin: 0 0 15px 0; font-size: 24px; color: #1f2937;">${conversation.title}</h1>`;
+        content += `<p style="margin: 5px 0; font-size: 12px; color: #6b7280;"><strong>创建时间:</strong> ${new Date(conversation.createdAt).toLocaleString()}</p>`;
+        content += `<p style="margin: 5px 0; font-size: 12px; color: #6b7280;"><strong>更新时间:</strong> ${new Date(conversation.updatedAt).toLocaleString()}</p>`;
+        content += `<p style="margin: 5px 0; font-size: 12px; color: #6b7280;"><strong>模型:</strong> ${conversation.model}</p>`;
         content += `</div>`;
 
-        conversation.messages.forEach(message => {
+        conversation.messages.forEach((message, index) => {
           const bgColor = message.role === 'user' ? '#f0f9ff' : '#f9fafb';
           const borderColor = message.role === 'user' ? '#0ea5e9' : '#10b981';
           const roleText = message.role === 'user' ? '用户' : 'AI助手';
           
-          content += `<div style="margin-bottom: 30px; padding: 20px; border-radius: 8px; background-color: ${bgColor}; border-left: 4px solid ${borderColor};">`;
-          content += `<div style="font-weight: bold; margin-bottom: 10px; color: #374151;">${roleText}</div>`;
+          content += `<div style="margin-bottom: 20px; padding: 15px; border-radius: 8px; background-color: ${bgColor}; border-left: 4px solid ${borderColor}; page-break-inside: avoid; break-inside: avoid;">`;
+          content += `<div style="font-weight: bold; margin-bottom: 10px; color: #374151; font-size: 16px;">${roleText}</div>`;
           
           if (message.role === 'assistant' && message.type === 'combined' && message.thinking) {
-            content += `<div style="background-color: #fef3c7; padding: 15px; border-radius: 6px; margin-bottom: 15px; border-left: 4px solid #f59e0b;">`;
-            content += `<div style="font-weight: bold; margin-bottom: 8px; color: #92400e;">思考过程:</div>`;
-            content += `<div>${markdownRenderer.render(message.thinking)}</div>`;
+            content += `<div style="background-color: #fef3c7; padding: 12px; border-radius: 6px; margin-bottom: 15px; border-left: 4px solid #f59e0b; page-break-inside: avoid;">`;
+            content += `<div style="font-weight: bold; margin-bottom: 8px; color: #92400e; font-size: 14px;">思考过程:</div>`;
+            content += `<div style="font-size: 13px; line-height: 1.5;">${markdownRenderer.render(message.thinking)}</div>`;
             content += `</div>`;
           }
           
-          content += `<div>${markdownRenderer.render(message.content)}</div>`;
+          content += `<div style="font-size: 14px; line-height: 1.6;">${markdownRenderer.render(message.content)}</div>`;
           content += `</div>`;
+          
+          // 在消息之间添加分页提示（除了最后一条消息）
+          if (index < conversation.messages.length - 1) {
+            content += `<div style="page-break-after: auto; margin: 10px 0;"></div>`;
+          }
         });
 
         tempDiv.innerHTML = content;
         document.body.appendChild(tempDiv);
 
+        // 等待两个动画帧，确保DOM完全渲染
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+
         // 使用html2canvas生成图片
         const canvas = await html2canvas(tempDiv, {
-          scale: 2,
+          scale: 2, // 提高图片质量
           useCORS: true,
-          allowTaint: true,
-          backgroundColor: '#ffffff'
+          allowTaint: false,
+          backgroundColor: '#ffffff',
+          width: 800,
+          height: tempDiv.scrollHeight
         });
 
-        // 移除临时元素
+        // 将canvas转换为图片并下载
+        const safeTitle = conversation.title.replace(/[<>:"/\\|?*]/g, '_').trim();
+        const fileName = safeTitle || 'untitled_chat';
+        
+        // 创建下载链接
+        const link = document.createElement('a');
+        link.download = `${fileName}.png`;
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+        
+        // 清理临时元素
         document.body.removeChild(tempDiv);
 
-        // 创建PDF
-        const pdf = new jsPDF({
-          orientation: 'portrait',
-          unit: 'mm',
-          format: 'a4'
-        });
-
-        const imgData = canvas.toDataURL('image/png');
-        const imgWidth = 210; // A4宽度
-        const pageHeight = 295; // A4高度
-        const imgHeight = (canvas.height * imgWidth) / canvas.width;
-        let heightLeft = imgHeight;
-        let position = 0;
-
-        // 添加第一页
-        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-        heightLeft -= pageHeight;
-
-        // 如果内容超过一页，添加更多页面
-        while (heightLeft >= 0) {
-          position = heightLeft - imgHeight;
-          pdf.addPage();
-          pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-          heightLeft -= pageHeight;
-        }
-
-        // 下载PDF
-         const safeTitle = conversation.title.replace(/[<>:"/\\|?*]/g, '_').trim();
-         const fileName = safeTitle || 'untitled_chat';
-         pdf.save(`${fileName}.pdf`);
-
       } catch (error) {
-        console.error('PDF导出失败:', error);
-        alert('PDF导出失败，请稍后再试');
+        console.error('图片导出失败:', error);
+        alert('图片导出失败，请稍后再试');
       }
     },
 
@@ -732,9 +791,45 @@ export default {
       }
     },
     
+    toggleAddDropdown() {
+      this.showAddDropdown = !this.showAddDropdown;
+    },
+    
     triggerFileUpload() {
       this.$refs.fileInput.click();
+      this.showAddDropdown = false;
     },
+    
+    openStyleSettings() {
+      this.showStyleModal = true;
+      this.showAddDropdown = false;
+    },
+    
+    closeStyleModal() {
+      this.showStyleModal = false;
+    },
+    
+    updateReplyStyle(style) {
+       this.replyStyle = style;
+       localStorage.setItem('reply_style', style);
+       this.closeStyleModal();
+     },
+     
+     handleClickOutside(event) {
+       // 检查是否点击了add-btn-container外部
+       const addBtnContainer = this.$el && this.$el.querySelector ? this.$el.querySelector('.add-btn-container') : null;
+       if (addBtnContainer && !addBtnContainer.contains(event.target)) {
+         this.showAddDropdown = false;
+       }
+       
+       // 移动端额外处理：检查是否点击了下拉菜单外部
+       if (this.showAddDropdown) {
+         const dropdown = this.$el && this.$el.querySelector ? this.$el.querySelector('.add-dropdown') : null;
+         if (dropdown && !dropdown.contains(event.target) && !addBtnContainer.contains(event.target)) {
+           this.showAddDropdown = false;
+         }
+       }
+     },
     
     handleFileChange(event) {
       const file = event.target.files[0];
@@ -885,31 +980,6 @@ export default {
   mounted() {
     // 初始化语音识别
     this.initSpeechRecognition();
-  },
-  
-  beforeDestroy() {
-    // 清理语音识别资源
-    if (this.recognition && this.isSpeechRecognizing) {
-      try {
-        this.recognition.stop();
-      } catch (error) {
-        console.error('停止语音识别失败:', error);
-      }
-    }
-    
-    // 清理定时器
-    if (this.stopTimer) {
-      clearTimeout(this.stopTimer);
-      this.stopTimer = null;
-    }
-    if (this.debounceTimer) {
-      clearTimeout(this.debounceTimer);
-      this.debounceTimer = null;
-    }
-    if (this.autoSendTimer) {
-      clearTimeout(this.autoSendTimer);
-      this.autoSendTimer = null;
-    }
   }
 };
 </script>
@@ -947,6 +1017,7 @@ export default {
   --secondary-color: #f8fafc;
   --border-color: #e5e7eb;
   --card-bg: #ffffff;
+  --secondary-bg: #f9fafb;
   --user-message-bg: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
   --assistant-message-bg: #ffffff;
   --code-bg: #f8fafc;
@@ -978,6 +1049,7 @@ export default {
   --secondary-color: #1f2937;
   --border-color: #374151;
   --card-bg: #1f2937;
+  --secondary-bg: #111827;
   --user-message-bg: linear-gradient(135deg, #38bdf8 0%, #0ea5e9 100%);
   --assistant-message-bg: #1f2937;
   --code-bg: #111827;
@@ -1217,6 +1289,11 @@ html, body {
 
 /* 移除重复的chat-input样式定义，使用下方更完整的定义 */
 
+/* 添加按钮容器 */
+.add-btn-container {
+  position: relative;
+}
+
 .add-btn {
   width: 36px;
   height: 36px;
@@ -1243,6 +1320,66 @@ html, body {
 .add-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.dropdown-open .add-btn {
+  background: var(--primary-color);
+  color: white;
+}
+
+/* 下拉菜单样式 */
+.add-dropdown {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  margin-bottom: 8px;
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  z-index: 1001;
+  min-width: 160px;
+  overflow: hidden;
+  animation: dropdownFadeIn 0.2s ease;
+}
+
+@keyframes dropdownFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.dropdown-item:last-child {
+  border-bottom: none;
+}
+
+.dropdown-item:hover {
+  background: var(--secondary-color);
+}
+
+.dropdown-icon {
+  margin-right: 12px;
+  font-size: 16px;
+}
+
+.dropdown-text {
+  font-size: 14px;
+  color: var(--text-color);
+  font-weight: 500;
 }
 
 .button-group {
@@ -1318,6 +1455,127 @@ html, body {
     transform: scale(1.05);
     box-shadow: 0 0 25px rgba(239, 68, 68, 0.7);
   }
+}
+
+/* 回复风格模态框样式 */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.style-modal {
+  background: var(--card-bg);
+  border-radius: 16px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+  width: 90%;
+  max-width: 480px;
+  max-height: 90vh;
+  overflow: hidden;
+  animation: modalFadeIn 0.3s ease;
+}
+
+@keyframes modalFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.style-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 24px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.style-modal-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-color);
+}
+
+.style-modal-header .close-btn {
+  background: none;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  color: var(--text-color);
+  padding: 4px;
+  border-radius: 6px;
+  transition: background-color 0.2s ease;
+}
+
+.style-modal-header .close-btn:hover {
+  background: var(--secondary-color);
+}
+
+.style-modal-body {
+  padding: 24px;
+}
+
+.style-options {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.style-option {
+  display: flex;
+  align-items: center;
+  padding: 16px;
+  border: 2px solid var(--border-color);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  background: var(--bg-color);
+}
+
+.style-option:hover {
+  border-color: var(--primary-color);
+  background: var(--secondary-color);
+}
+
+.style-option.active {
+  border-color: var(--primary-color);
+  background: rgba(59, 130, 246, 0.1);
+}
+
+.style-icon {
+  font-size: 24px;
+  margin-right: 16px;
+  width: 32px;
+  text-align: center;
+}
+
+.style-info {
+  flex: 1;
+}
+
+.style-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-color);
+  margin-bottom: 4px;
+}
+
+.style-desc {
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.4;
 }
 
 /* 文件预览样式 */
@@ -1445,7 +1703,14 @@ html, body {
     padding: 12px;
     background: var(--bg-color);
     border-top: 1px solid var(--border-color);
-    z-index: 1000;
+    z-index: 999;
+  }
+  
+  /* 移动端下拉菜单优化 */
+  .add-dropdown {
+    z-index: 1002;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.2);
+    backdrop-filter: blur(10px);
   }
   
   .input-controls {
@@ -1453,7 +1718,14 @@ html, body {
     padding: 8px 12px;
     gap: 8px;
     min-width: 0;
-    overflow: hidden;
+  }
+  
+  .add-btn-container {
+    position: relative;
+  }
+  
+  .add-dropdown {
+    left: 0;
   }
   
   .chat-input {

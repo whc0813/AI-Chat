@@ -8,7 +8,7 @@
       
       
       <!-- 模型选择器 -->
-      <div class="title-model-selector" @click="toggleModelDropdown" :class="{ 'open': showModelDropdown }">
+      <div class="title-model-selector" ref="modelSelector" @click="toggleModelDropdown" :class="{ 'open': showModelDropdown }">
         <div class="current-model">
           <div class="model-icon">{{ getModelIcon(selectedModel) }}</div>
           <div class="model-info">
@@ -52,6 +52,9 @@
         />
 
       </div>
+      <button class="share-btn" @click.stop="openShareModal" title="分享对话">
+        <span class="share-icon">📤</span>
+      </button>
       <button class="theme-toggle-btn" @click.stop="toggleTheme">
         <span class="theme-icon">{{ isDarkMode ? '☀️' : '🌙' }}</span>
       </button>
@@ -274,6 +277,37 @@
       </div>
     </div>
   </div>
+
+  <!-- 分享模态框 -->
+  <div v-if="showShareModal" class="preview-modal-overlay" @click="closeShareModal">
+    <div class="share-modal" @click.stop>
+      <div class="preview-modal-header">
+        <h3>分享对话</h3>
+        <button class="close-btn" @click="closeShareModal">×</button>
+      </div>
+      
+      <div class="share-modal-content">
+        <div class="share-options">
+          <button class="share-option" @click="exportAsJson">
+            <span class="share-icon">📄</span>
+            <span class="share-text">导出为JSON</span>
+          </button>
+          <button class="share-option" @click="exportAsMarkdown">
+            <span class="share-icon">📝</span>
+            <span class="share-text">导出为Markdown</span>
+          </button>
+          <button class="share-option" @click="exportAsHtml">
+            <span class="share-icon">🌐</span>
+            <span class="share-text">导出为HTML</span>
+          </button>
+          <button class="share-option" @click="exportAsImage">
+            <span class="share-icon">🖼️</span>
+            <span class="share-text">导出为图片</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
 </template>
 
 <script>
@@ -284,6 +318,18 @@ import mammoth from 'mammoth';
 import * as XLSX from 'xlsx';
 
 export default {
+  emits: [
+    'send-message',
+    'delete-message',
+    'clear-chat',
+    'model-changed',
+    'theme-changed',
+    'update-title',
+    'toggle-sidebar',
+    'generating-changed',
+    'input-changed',
+    'send-user-message'
+  ],
   props: {
     messages: {
       type: Array,
@@ -304,6 +350,10 @@ export default {
     isGenerating: {
       type: Boolean,
       default: false
+    },
+    replyStyle: {
+      type: String,
+      default: 'balanced'
     }
   },
   data() {
@@ -356,6 +406,7 @@ export default {
       showHtmlPreviewModal: false,
       htmlPreviewContent: '',
       showModelDropdown: false,
+      showShareModal: false,
       // markdown-it 实例
       markdownRenderer: md,
 
@@ -403,6 +454,10 @@ export default {
             if (container) {
               container.scrollTop = container.scrollHeight;
             }
+            // 重新设置事件监听器以处理新添加的代码块
+            this.$nextTick(() => {
+              this.setupCopyButtons();
+            });
           });
         }
       },
@@ -414,12 +469,12 @@ export default {
     const savedTheme = localStorage.getItem('darkMode');
     this.isDarkMode = savedTheme !== null ? JSON.parse(savedTheme) : true;
   },
-  beforeDestroy() {
+  beforeUnmount() {
     document.removeEventListener('click', this.handleClickOutside);
     
     // 清理复制按钮事件监听器
     if (this._copyButtonsSetup && this._copyButtonHandler) {
-      const messagesContainer = this.$el && this.$el.querySelector ? this.$el.querySelector('.chat-messages') : null;
+      const messagesContainer = this.$refs.chatMessages;
       if (messagesContainer) {
         messagesContainer.removeEventListener('click', this._copyButtonHandler);
       }
@@ -443,13 +498,6 @@ export default {
       this.stopTimer = null;
     }
     
-    // 清理复制按钮事件监听器
-    if (this._copyButtonsSetup && this._copyButtonHandler) {
-      const messagesContainer = this.$el && this.$el.querySelector ? this.$el.querySelector('.messages-container') : null;
-      if (messagesContainer) {
-        messagesContainer.removeEventListener('click', this._copyButtonHandler);
-      }
-    }
     this._copyButtonsSetup = false;
     this._copyButtonHandler = null;
     
@@ -614,14 +662,14 @@ export default {
     setupCopyButtons(retryCount = 0) {
       // 移除旧的事件监听器
       if (this._copyButtonsSetup) {
-        const messagesContainer = this.$el && this.$el.querySelector ? this.$el.querySelector('.chat-messages') : null;
+        const messagesContainer = this.$refs.chatMessages;
         if (messagesContainer && this._copyButtonHandler) {
           messagesContainer.removeEventListener('click', this._copyButtonHandler);
         }
       }
       
       // 使用事件委托，但限制在消息容器内
-      const messagesContainer = this.$el && this.$el.querySelector ? this.$el.querySelector('.chat-messages') : null;
+      const messagesContainer = this.$refs.chatMessages;
       if (!messagesContainer) {
         // 防止无限递归，最多重试5次
         if (retryCount < 5) {
@@ -887,7 +935,8 @@ export default {
                         });
                     }, 100); // 增加到100ms，减少更新频率
                 },
-                apiKeys
+                apiKeys,
+                this.replyStyle
             );
             
             // 更新Token统计信息
@@ -1048,7 +1097,8 @@ export default {
                             });
                         }, 100); // 增加到100ms，减少更新频率
                     },
-                    apiKeys
+                    apiKeys,
+                    this.replyStyle
                 );
                 
                 // 更新Token统计信息
@@ -1321,7 +1371,8 @@ export default {
                 this.displayTitle = finalTitle.trim(); 
             }
             },
-            apiKeys
+            apiKeys,
+            'concise'
         );
         
         // 完成后，向父组件emit最终标题
@@ -1357,8 +1408,7 @@ export default {
         return model ? model.description : '未知模型';
     },
     handleClickOutside(event) {
-        if (!this.$el || !this.$el.querySelector) return;
-        const modelSelector = this.$el.querySelector('.title-model-selector');
+        const modelSelector = this.$refs.modelSelector;
         if (modelSelector && !modelSelector.contains(event.target)) {
             this.showModelDropdown = false;
         }
@@ -1509,6 +1559,360 @@ export default {
     sendExampleQuestion(question) {
       // 通过emit事件通知父组件发送消息
       this.$emit('send-user-message', question);
+    },
+
+    // 显示分享模态框
+    openShareModal() {
+      this.showShareModal = true;
+    },
+
+    // 关闭分享模态框
+    closeShareModal() {
+      this.showShareModal = false;
+    },
+
+    // 导出为JSON
+    exportAsJson() {
+      const conversation = this.getCurrentConversation();
+      if (!conversation) return;
+      
+      // 检查是否有模型切换，并添加元数据
+      const usedModels = new Set();
+      conversation.messages.forEach(message => {
+        if (message.role === 'assistant' && message.stats && message.stats.model) {
+          usedModels.add(message.stats.model);
+        }
+      });
+      
+      // 为导出数据添加模型切换信息
+      const exportData = {
+        ...conversation,
+        metadata: {
+          hasModelSwitch: usedModels.size > 1,
+          usedModels: Array.from(usedModels),
+          exportTime: new Date().toISOString()
+        }
+      };
+      
+      const dataStr = JSON.stringify([exportData], null, 2);
+      const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(dataStr);
+      const safeTitle = conversation.title.replace(/[<>:"/\\|?*]/g, '_').trim();
+      const fileName = safeTitle || 'untitled_chat';
+      this.downloadFile(dataUri, `${fileName}.json`);
+      this.closeShareModal();
+    },
+
+    // 导出为Markdown
+    exportAsMarkdown() {
+      const conversation = this.getCurrentConversation();
+      if (!conversation) return;
+      
+      // 检查是否有模型切换
+      const usedModels = new Set();
+      conversation.messages.forEach(message => {
+        if (message.role === 'assistant' && message.stats && message.stats.model) {
+          usedModels.add(message.stats.model);
+        }
+      });
+      
+      let markdown = `# ${conversation.title}\n\n`;
+      markdown += `**创建时间:** ${new Date(conversation.createdAt).toLocaleString()}\n`;
+      markdown += `**更新时间:** ${new Date(conversation.updatedAt).toLocaleString()}\n`;
+      
+      if (usedModels.size > 1) {
+        markdown += `**使用模型:** ${Array.from(usedModels).map(model => this.getModelName(model)).join(', ')} (对话中切换)\n\n`;
+      } else {
+        markdown += `**模型:** ${conversation.model}\n\n`;
+      }
+      markdown += '---\n\n';
+
+      conversation.messages.forEach((message, index) => {
+        if (message.role === 'user') {
+          markdown += `**用户:**\n\n${message.content}\n\n`;
+        } else if (message.role === 'assistant') {
+          // 显示AI助手和使用的模型
+          const modelInfo = message.stats && message.stats.model ? ` (${this.getModelName(message.stats.model)})` : '';
+          markdown += `**AI助手${modelInfo}:**\n\n`;
+          if (message.type === 'combined' && message.thinking) {
+            markdown += `<details>\n<summary>思考过程</summary>\n\n${message.thinking}\n\n</details>\n\n`;
+          }
+          markdown += `${message.content}\n\n`;
+        }
+        if (index < conversation.messages.length - 1) {
+          markdown += '---\n\n';
+        }
+      });
+
+      const safeTitle = conversation.title.replace(/[<>:"/\\|?*]/g, '_').trim();
+      const fileName = safeTitle || 'untitled_chat';
+      const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      this.downloadFile(url, `${fileName}.md`);
+      URL.revokeObjectURL(url);
+      this.closeShareModal();
+    },
+
+    // 导出为HTML
+    exportAsHtml() {
+      const conversation = this.getCurrentConversation();
+      if (!conversation) return;
+      
+      // 检查是否有模型切换
+      const usedModels = new Set();
+      conversation.messages.forEach(message => {
+        if (message.role === 'assistant' && message.stats && message.stats.model) {
+          usedModels.add(message.stats.model);
+        }
+      });
+      
+      let modelInfo;
+      if (usedModels.size > 1) {
+        modelInfo = `${Array.from(usedModels).map(model => this.getModelName(model)).join(', ')} (对话中切换)`;
+      } else {
+        modelInfo = conversation.model;
+      }
+      
+      let html = `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${conversation.title}</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; max-width: 800px; margin: 0 auto; padding: 20px; color: #333; }
+    .header { border-bottom: 2px solid #eee; padding-bottom: 20px; margin-bottom: 30px; }
+    .message { margin-bottom: 30px; padding: 20px; border-radius: 8px; }
+    .user-message { background-color: #f0f9ff; border-left: 4px solid #0ea5e9; }
+    .assistant-message { background-color: #f9fafb; border-left: 4px solid #10b981; }
+    .role { font-weight: bold; margin-bottom: 10px; color: #374151; }
+    .model-info { font-size: 0.9em; color: #666; margin-left: 8px; }
+    .thinking { background-color: #fef3c7; padding: 15px; border-radius: 6px; margin-bottom: 15px; border-left: 4px solid #f59e0b; }
+    .thinking-title { font-weight: bold; margin-bottom: 8px; color: #92400e; }
+    pre { background-color: #f4f4f4; padding: 15px; border-radius: 6px; overflow-x: auto; }
+    code { background-color: #f4f4f4; padding: 2px 4px; border-radius: 3px; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>${conversation.title}</h1>
+    <p><strong>创建时间:</strong> ${new Date(conversation.createdAt).toLocaleString()}</p>
+    <p><strong>更新时间:</strong> ${new Date(conversation.updatedAt).toLocaleString()}</p>
+    <p><strong>使用模型:</strong> ${modelInfo}</p>
+  </div>
+`;
+
+      conversation.messages.forEach(message => {
+        const messageClass = message.role === 'user' ? 'user-message' : 'assistant-message';
+        let roleText = message.role === 'user' ? '用户' : 'AI助手';
+        
+        // 为AI助手消息添加模型信息
+        if (message.role === 'assistant' && message.stats && message.stats.model) {
+          roleText += `<span class="model-info">(${this.getModelName(message.stats.model)})</span>`;
+        }
+        
+        html += `  <div class="message ${messageClass}">
+`;
+        html += `    <div class="role">${roleText}</div>
+`;
+        
+        if (message.role === 'assistant' && message.type === 'combined' && message.thinking) {
+          html += `    <div class="thinking">
+`;
+          html += `      <div class="thinking-title">思考过程:</div>
+`;
+          html += `      <div>${this.markdownRenderer.render(message.thinking)}</div>
+`;
+          html += `    </div>
+`;
+        }
+        
+        html += `    <div>${this.markdownRenderer.render(message.content)}</div>
+`;
+        html += `  </div>
+`;
+      });
+
+      html += `</body>
+</html>`;
+
+      const safeTitle = conversation.title.replace(/[<>:"/\\|?*]/g, '_').trim();
+      const fileName = safeTitle || 'untitled_chat';
+      const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      this.downloadFile(url, `${fileName}.html`);
+      URL.revokeObjectURL(url);
+      this.closeShareModal();
+    },
+
+    // 导出为图片
+    async exportAsImage() {
+      const conversation = this.getCurrentConversation();
+      if (!conversation) return;
+      
+      try {
+        // 动态导入html2canvas库
+        const html2canvas = (await import('html2canvas')).default;
+
+        // 创建临时容器
+        const tempDiv = document.createElement('div');
+        tempDiv.style.position = 'absolute';
+        tempDiv.style.top = '-9999px';
+        tempDiv.style.left = '0';
+        tempDiv.style.width = '800px';
+        tempDiv.style.padding = '20px';
+        tempDiv.style.backgroundColor = 'white';
+        tempDiv.style.fontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+        tempDiv.style.lineHeight = '1.6';
+        tempDiv.style.color = '#333';
+        tempDiv.style.fontSize = '14px';
+        tempDiv.style.visibility = 'visible';
+        tempDiv.style.pointerEvents = 'none';
+
+        // 生成内容
+        let content = `<div style="border-bottom: 2px solid #eee; padding-bottom: 20px; margin-bottom: 30px; page-break-inside: avoid;">`;
+        content += `<h1 style="margin: 0 0 15px 0; font-size: 24px; color: #1f2937;">${conversation.title}</h1>`;
+        content += `<p style="margin: 5px 0; font-size: 12px; color: #6b7280;"><strong>创建时间:</strong> ${new Date(conversation.createdAt).toLocaleString()}</p>`;
+        content += `<p style="margin: 5px 0; font-size: 12px; color: #6b7280;"><strong>更新时间:</strong> ${new Date(conversation.updatedAt).toLocaleString()}</p>`;
+        content += `<p style="margin: 5px 0; font-size: 12px; color: #6b7280;"><strong>模型:</strong> ${conversation.model}</p>`;
+        content += `</div>`;
+
+        conversation.messages.forEach((message, index) => {
+          const bgColor = message.role === 'user' ? '#f0f9ff' : '#f9fafb';
+          const borderColor = message.role === 'user' ? '#0ea5e9' : '#10b981';
+          const roleText = message.role === 'user' ? '用户' : 'AI助手';
+          
+          content += `<div style="margin-bottom: 20px; padding: 15px; border-radius: 8px; background-color: ${bgColor}; border-left: 4px solid ${borderColor}; page-break-inside: avoid; break-inside: avoid;">`;
+          content += `<div style="font-weight: bold; margin-bottom: 10px; color: #374151; font-size: 16px;">${roleText}</div>`;
+          
+          if (message.role === 'assistant' && message.type === 'combined' && message.thinking) {
+            content += `<div style="background-color: #fef3c7; padding: 12px; border-radius: 6px; margin-bottom: 15px; border-left: 4px solid #f59e0b; page-break-inside: avoid;">`;
+            content += `<div style="font-weight: bold; margin-bottom: 8px; color: #92400e; font-size: 14px;">思考过程:</div>`;
+            content += `<div style="font-size: 13px; line-height: 1.5;">${this.markdownRenderer.render(message.thinking)}</div>`;
+            content += `</div>`;
+          }
+          
+          content += `<div style="font-size: 14px; line-height: 1.6;">${this.markdownRenderer.render(message.content)}</div>`;
+          content += `</div>`;
+          
+          if (index < conversation.messages.length - 1) {
+            content += `<div style="page-break-after: auto; margin: 10px 0;"></div>`;
+          }
+        });
+
+        tempDiv.innerHTML = content;
+        document.body.appendChild(tempDiv);
+
+        // 等待DOM渲染
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+
+        // 生成图片
+        const canvas = await html2canvas(tempDiv, {
+          scale: 2,
+          useCORS: true,
+          allowTaint: false,
+          backgroundColor: '#ffffff',
+          width: 800,
+          height: tempDiv.scrollHeight
+        });
+
+        // 下载图片
+        const safeTitle = conversation.title.replace(/[<>:"/\\|?*]/g, '_').trim();
+        const fileName = safeTitle || 'untitled_chat';
+        
+        const link = document.createElement('a');
+        link.download = `${fileName}.png`;
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+        
+        // 清理
+        document.body.removeChild(tempDiv);
+        this.closeShareModal();
+
+      } catch (error) {
+        console.error('图片导出失败:', error);
+        alert('图片导出失败，请稍后再试');
+      }
+    },
+
+    // 获取当前对话
+    getCurrentConversation() {
+      if (!this.messages || this.messages.length === 0) {
+        return null;
+      }
+      
+      return {
+        title: this.currentTitle || '未命名对话',
+        messages: this.messages,
+        model: this.currentModel || 'unknown',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+    },
+
+    // 下载文件
+    downloadFile(url, filename) {
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    },
+
+    // 分享为文本
+    shareAsText() {
+      const conversation = {
+        title: this.currentTitle,
+        messages: this.messages,
+        model: this.currentModel
+      };
+      
+      // 检查是否有模型切换
+      const usedModels = new Set();
+      conversation.messages.forEach(message => {
+        if (message.role === 'assistant' && message.stats && message.stats.model) {
+          usedModels.add(message.stats.model);
+        }
+      });
+      
+      let text = `对话标题: ${conversation.title}\n`;
+      if (usedModels.size > 1) {
+        text += `使用模型: ${Array.from(usedModels).map(model => this.getModelName(model)).join(', ')} (对话中切换)\n\n`;
+      } else {
+        text += `模型: ${conversation.model}\n\n`;
+      }
+      text += '---\n\n';
+      
+      conversation.messages.forEach((message, index) => {
+        if (message.role === 'user') {
+          text += `用户:\n${message.content}\n\n`;
+        } else if (message.role === 'assistant') {
+          // 显示AI助手和使用的模型
+          const modelInfo = message.stats && message.stats.model ? ` (${this.getModelName(message.stats.model)})` : '';
+          text += `AI助手${modelInfo}:\n`;
+          if (message.type === 'combined' && message.thinking) {
+            text += `思考过程:\n${message.thinking}\n\n`;
+          }
+          text += `${message.content}\n\n`;
+        }
+        if (index < conversation.messages.length - 1) {
+          text += '---\n\n';
+        }
+      });
+      
+      navigator.clipboard.writeText(text).then(() => {
+        alert('对话内容已复制到剪贴板');
+      }).catch(() => {
+        alert('复制失败，请手动复制');
+      });
+      
+      this.closeShareModal();
+    },
+
+    // 分享为链接（暂时显示提示）
+    shareAsLink() {
+      alert('链接分享功能正在开发中');
+      this.closeShareModal();
     },
 
   },
@@ -2044,6 +2448,40 @@ export default {
   transition: color 0.2s ease;
 }
 .theme-toggle-btn:hover .theme-icon {
+  color: white;
+}
+
+.share-btn {
+  position: absolute;
+  right: 60px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 32px;
+  height: 32px;
+  padding: 6px;
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  opacity: 1;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+.share-btn:hover {
+  transform: translateY(-50%) scale(1.1);
+  box-shadow: 0 2px 8px rgba(66, 153, 225, 0.3);
+  opacity: 1;
+  background: var(--primary-color);
+  border-color: var(--primary-color);
+}
+.share-btn .share-icon {
+  color: var(--text-color);
+  transition: color 0.2s ease;
+}
+.share-btn:hover .share-icon {
   color: white;
 }
 
@@ -4016,6 +4454,44 @@ button[disabled]:hover {
     display: block;
   }
 
+  .share-btn {
+    position: absolute !important;
+    right: 60px !important;
+    top: 50% !important;
+    transform: translateY(-50%) !important;
+    width: 36px;
+    height: 36px;
+    min-width: 36px;
+    min-height: 36px;
+    padding: 0;
+    margin: 0;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    line-height: 1;
+    background: var(--primary-color);
+    border: 1px solid var(--primary-color);
+    border-radius: 50%;
+    color: white;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    opacity: 1 !important;
+    box-sizing: border-box;
+  }
+
+  .share-btn:hover {
+    background: var(--secondary-color);
+    border-color: var(--secondary-color);
+    transform: translateY(-50%) scale(1.05) !important;
+  }
+
+  .share-btn .share-icon {
+    line-height: 1;
+    display: block;
+  }
+
   /* 代码块移动端优化 */
   :deep(.code-block-container) {
     margin: 2em 0;
@@ -4409,8 +4885,100 @@ button[disabled]:hover {
     width: 32px;
     height: 32px;
   }
+}
 
-  .action-btn svg {
+/* 分享模态框样式 */
+.share-modal {
+  background: var(--bg-color);
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  max-width: 400px;
+  width: 90%;
+  max-height: 80vh;
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+}
+
+.share-modal-content {
+  padding: 20px;
+}
+
+.share-options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.share-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 16px 12px;
+  background: var(--action-btn-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: var(--text-color);
+  text-align: center;
+  width: 100%;
+  min-height: 80px;
+}
+
+.share-option:hover {
+  background: var(--primary-color);
+  color: white;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(66, 153, 225, 0.3);
+}
+
+.share-icon {
+  font-size: 20px;
+  min-width: 24px;
+}
+
+.share-text {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+/* 移动端分享模态框优化 */
+@media (max-width: 768px) {
+  .share-modal {
+    max-width: 350px;
+    width: 95%;
+  }
+  
+  .share-modal-content {
+    padding: 16px;
+  }
+  
+  .share-options {
+    gap: 10px;
+  }
+  
+  .share-option {
+    padding: 12px 8px;
+    min-height: 70px;
+    font-size: 13px;
+  }
+  
+  .share-icon {
+    font-size: 18px;
+  }
+  
+  .share-icon {
+    font-size: 18px;
+  }
+  
+  .share-text {
+    font-size: 12px;
+  }
+}
+
+.action-btn svg {
     width: 16px;
     height: 16px;
   }
@@ -4423,7 +4991,7 @@ button[disabled]:hover {
   :deep(code) {
     font-size: 13px !important;
   }
-}
+
 </style>
 
 <style>

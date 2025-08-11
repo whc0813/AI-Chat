@@ -31,7 +31,7 @@ export const cancelAllRequests = () => {
   }
 };
 
-export const streamWithGLM = async (messages, onChunk, apiKey) => {
+export const streamWithGLM = async (messages, onChunk, apiKey, styleConfig = null) => {
   let abortController = null;
   let tokenStats = { input: 0, output: 0, total: 0 };
   
@@ -50,6 +50,8 @@ export const streamWithGLM = async (messages, onChunk, apiKey) => {
         model: "glm-4-flash",
         messages: messages,
         stream: true,
+        temperature: styleConfig?.temperature || 0.7,
+        top_p: styleConfig?.top_p || 0.9,
       }),
       signal: abortController.signal // 使用正确的 AbortSignal
     });
@@ -112,7 +114,7 @@ export const streamWithGLM = async (messages, onChunk, apiKey) => {
 };
 
 // DeepSeek 流式调用
-export const streamWithDeepSeek = async (messages, model, onChunk, apiKey) => {
+export const streamWithDeepSeek = async (messages, model, onChunk, apiKey, styleConfig = null) => {
   let tokenStats = { input: 0, output: 0, total: 0 };
   
   try {
@@ -125,8 +127,8 @@ export const streamWithDeepSeek = async (messages, model, onChunk, apiKey) => {
       messages: messages,
       model: model,
       stream: true,
-      temperature: 0.7,
-      top_p: 0.9,
+      temperature: styleConfig?.temperature || 0.7,
+      top_p: styleConfig?.top_p || 0.9,
       max_tokens: 8192
     }, {
       signal: cancelTokenSources.deepseek.signal // 添加取消信号
@@ -188,11 +190,48 @@ export const summarizeTitle = async (messages) => {
   }
 };
 
+// 获取回复风格的系统提示
+const getStyleConfig = (style) => {
+  const styleConfigs = {
+    concise: {
+      prompt: '请用简洁明了的方式回答，直接给出要点，避免冗长的解释。',
+      temperature: 0.3,
+      top_p: 0.8
+    },
+    balanced: {
+      prompt: '请提供详细且结构化的回答，包含必要的解释和例子，保持逻辑清晰。',
+      temperature: 0.7,
+      top_p: 0.9
+    },
+    detailed: {
+      prompt: '请提供全面深入的回答，包含详细的解释、背景信息、多个角度的分析和相关例子。',
+      temperature: 0.5,
+      top_p: 0.95
+    },
+    creative: {
+      prompt: '请用富有创意和想象力的方式回答，可以使用比喻、故事或独特的视角来解释问题。',
+      temperature: 0.9,
+      top_p: 0.95
+    }
+  };
+  return styleConfigs[style] || styleConfigs.balanced;
+};
+
 // 统一流式调用方法
-export const chatWithAI = async (messages, model, onChunk, apiKeys) => {
+export const chatWithAI = async (messages, model, onChunk, apiKeys, replyStyle = 'balanced') => {
+  // 获取回复风格配置
+  const styleConfig = getStyleConfig(replyStyle);
+  const messagesWithStyle = [
+    {
+      role: 'system',
+      content: styleConfig.prompt
+    },
+    ...messages
+  ];
+  
   if (model.startsWith('glm-')) {
-    return await streamWithGLM(messages, onChunk, apiKeys.glm);
+    return await streamWithGLM(messagesWithStyle, onChunk, apiKeys.glm, styleConfig);
   } else {
-    return await streamWithDeepSeek(messages, model, onChunk, apiKeys.deepseek);
+    return await streamWithDeepSeek(messagesWithStyle, model, onChunk, apiKeys.deepseek, styleConfig);
   }
 };
