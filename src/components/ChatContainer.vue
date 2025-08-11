@@ -1567,8 +1567,12 @@ export default {
       
       if (usedModels.size > 1) {
         markdown += `**使用模型:** ${Array.from(usedModels).map(model => this.getModelName(model)).join(', ')} (对话中切换)\n\n`;
+      } else if (usedModels.size === 1) {
+        // 如果只有一个模型，显示实际使用的模型
+        markdown += `**模型:** ${this.getModelName(Array.from(usedModels)[0])}\n\n`;
       } else {
-        markdown += `**模型:** ${conversation.model}\n\n`;
+        // 如果没有模型统计信息，显示当前选择的模型或对话的模型
+        markdown += `**模型:** ${this.getModelName(this.selectedModel || conversation.model)}\n\n`;
       }
       markdown += '---\n\n';
 
@@ -1614,8 +1618,12 @@ export default {
       let modelInfo;
       if (usedModels.size > 1) {
         modelInfo = `${Array.from(usedModels).map(model => this.getModelName(model)).join(', ')} (对话中切换)`;
+      } else if (usedModels.size === 1) {
+        // 如果只有一个模型，显示实际使用的模型
+        modelInfo = this.getModelName(Array.from(usedModels)[0]);
       } else {
-        modelInfo = conversation.model;
+        // 如果没有模型统计信息，显示当前选择的模型或对话的模型
+        modelInfo = this.getModelName(this.selectedModel || conversation.model);
       }
       
       let html = `<!DOCTYPE html>
@@ -1824,8 +1832,12 @@ export default {
       let text = `对话标题: ${conversation.title}\n`;
       if (usedModels.size > 1) {
         text += `使用模型: ${Array.from(usedModels).map(model => this.getModelName(model)).join(', ')} (对话中切换)\n\n`;
+      } else if (usedModels.size === 1) {
+        // 如果只有一个模型，显示实际使用的模型
+        text += `模型: ${this.getModelName(Array.from(usedModels)[0])}\n\n`;
       } else {
-        text += `模型: ${conversation.model}\n\n`;
+        // 如果没有模型统计信息，显示当前选择的模型或对话的模型
+        text += `模型: ${this.getModelName(this.selectedModel || conversation.model)}\n\n`;
       }
       text += '---\n\n';
       
