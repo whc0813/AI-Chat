@@ -67,75 +67,21 @@
           <div class="welcome-header">
             <div class="welcome-logo">🤖</div>
             <h1 class="welcome-title">AI 智能助手</h1>
-            <p class="welcome-description">我可以帮助您解答问题、编写代码、创作内容等</p>
-          </div>
-          
-          <div class="capabilities-section">
-            <h3 class="section-title">我能为您做什么？</h3>
-            <div class="capabilities-grid">
-              <div class="capability-card">
-                <span class="capability-icon">💡</span>
-                <span class="capability-text">解答问题</span>
-              </div>
-              <div class="capability-card">
-                <span class="capability-icon">💻</span>
-                <span class="capability-text">编程协助</span>
-              </div>
-              <div class="capability-card">
-                <span class="capability-icon">✍️</span>
-                <span class="capability-text">文本创作</span>
-              </div>
-              <div class="capability-card">
-                <span class="capability-icon">🔍</span>
-                <span class="capability-text">数据分析</span>
-              </div>
-            </div>
           </div>
           
           <div class="example-questions">
-            <h3 class="section-title">试试这些问题</h3>
             <div class="example-grid">
-              <div class="example-item" @click="sendExampleQuestion('请介绍一下你自己，你能帮我做什么？')">
-                <span class="example-icon">👋</span>
-                <div class="example-content">
-                  <span class="example-text">自我介绍</span>
-                  <span class="example-desc">了解AI助手的能力</span>
-                </div>
-              </div>
-              <div class="example-item" @click="sendExampleQuestion('帮我写一个Python函数来计算斐波那契数列')">
-                <span class="example-icon">🐍</span>
-                <div class="example-content">
-                  <span class="example-text">编程帮助</span>
-                  <span class="example-desc">Python代码示例</span>
-                </div>
-              </div>
-              <div class="example-item" @click="sendExampleQuestion('请帮我写一份关于人工智能发展的简短报告')">
-                <span class="example-icon">📝</span>
-                <div class="example-content">
-                  <span class="example-text">文档写作</span>
-                  <span class="example-desc">AI发展报告</span>
-                </div>
-              </div>
               <div class="example-item" @click="sendExampleQuestion('解释一下机器学习和深度学习的区别')">
-                <span class="example-icon">🧠</span>
-                <div class="example-content">
-                  <span class="example-text">知识问答</span>
-                  <span class="example-desc">技术概念解释</span>
-                </div>
-              </div>
-              <div class="example-item" @click="sendExampleQuestion('帮我制定一个学习计划来提升编程技能')">
-                <span class="example-icon">📚</span>
-                <div class="example-content">
-                  <span class="example-text">学习规划</span>
-                  <span class="example-desc">个人发展建议</span>
-                </div>
+                解释一下机器学习和深度学习的区别
               </div>
               <div class="example-item" @click="sendExampleQuestion('创作一首关于春天的现代诗')">
-                <span class="example-icon">🌸</span>
-                <div class="example-content">
-                  <span class="example-text">创意写作</span>
-                  <span class="example-desc">诗歌创作</span>
-                </div>
+                创作一首关于春天的现代诗
+              </div>
+              <div class="example-item" @click="sendExampleQuestion('帮我写一个Python函数来计算斐波那契数列')">
+                帮我写一个Python函数来计算斐波那契数列
+              </div>
+              <div class="example-item" @click="sendExampleQuestion('帮我制定一个学习计划来提升编程技能')">
+                帮我制定一个学习计划来提升编程技能
               </div>
             </div>
           </div>
@@ -2187,125 +2133,40 @@ export default {
   line-height: 1.5;
 }
 
-.capabilities-section {
-  margin-bottom: 48px;
-}
-
-.section-title {
-  font-size: 1.4rem;
-  font-weight: 600;
-  color: var(--text-color);
-  margin-bottom: 24px;
-  opacity: 0.9;
-}
-
-.capabilities-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 16px;
-  margin-bottom: 20px;
-}
-
-.capability-card {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 16px 20px;
-  background: linear-gradient(135deg, var(--card-bg), var(--action-btn-bg));
-  border: 1px solid var(--border-color);
-  border-radius: 16px;
-  backdrop-filter: blur(10px);
-}
-
-.capability-icon {
-  font-size: 1.5rem;
-  flex-shrink: 0;
-}
-
-.capability-text {
-  font-size: 1rem;
-  color: var(--text-color);
-  font-weight: 500;
-}
-
 .example-questions {
   margin-top: 32px;
 }
 
 .example-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: repeat(2, 1fr); /* 2x2 网格 */
   gap: 16px;
-  max-width: 100%;
+  max-width: 700px; /* 限制最大宽度 */
   margin: 0 auto;
 }
 
 .example-item {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 20px;
+  padding: 16px;
   background: var(--card-bg);
   border: 1px solid var(--border-color);
-  border-radius: 16px;
+  border-radius: 12px;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: all 0.2s ease;
   text-align: left;
-  position: relative;
-  overflow: hidden;
-}
-
-.example-item::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: -100%;
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
-  transition: left 0.5s ease;
-}
-
-.example-item:hover::before {
-  left: 100%;
+  font-size: 14px;
+  color: var(--text-color);
 }
 
 .example-item:hover {
-  background: linear-gradient(135deg, var(--action-btn-bg), var(--card-bg));
   border-color: var(--primary-color);
-  transform: translateY(-4px);
-  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+  background-color: var(--secondary-color);
 }
 
-.example-icon {
-  font-size: 1.8rem;
-  flex-shrink: 0;
-  transition: transform 0.3s ease;
-}
-
-.example-item:hover .example-icon {
-  transform: scale(1.1);
-}
-
-.example-content {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  flex: 1;
-}
-
-.example-text {
-  font-size: 1rem;
-  color: var(--text-color);
-  font-weight: 600;
-  line-height: 1.3;
-}
-
-.example-desc {
-  font-size: 0.85rem;
-  color: var(--text-secondary);
-  opacity: 0.8;
-  line-height: 1.4;
+/* 移动端适配 */
+@media (max-width: 768px) {
+  .example-grid {
+    grid-template-columns: 1fr; /* 移动端单列显示 */
+  }
 }
 
 @keyframes fadeIn {
@@ -4811,33 +4672,6 @@ button[disabled]:hover {
     margin-bottom: 16px;
   }
 
-  .capabilities-section {
-    margin-bottom: 32px;
-  }
-
-  .section-title {
-    font-size: 1.2rem;
-    margin-bottom: 16px;
-  }
-
-  .capabilities-grid {
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-    gap: 12px;
-  }
-
-  .capability-card {
-    padding: 12px 16px;
-    border-radius: 12px;
-  }
-
-  .capability-icon {
-    font-size: 1.3rem;
-  }
-
-  .capability-text {
-    font-size: 0.9rem;
-  }
-
   .example-questions {
     margin-top: 24px;
   }
@@ -4850,19 +4684,6 @@ button[disabled]:hover {
   .example-item {
     padding: 16px;
     border-radius: 12px;
-    gap: 14px;
-  }
-
-  .example-icon {
-    font-size: 1.5rem;
-  }
-
-  .example-text {
-    font-size: 0.95rem;
-  }
-
-  .example-desc {
-    font-size: 0.8rem;
   }
 
   input {
