@@ -35,6 +35,7 @@
           @generating-changed="handleGeneratingChanged"
           @input-changed="handleInputChanged"
           @send-user-message="handleSendUserMessage"
+          @quote-message="handleQuoteMessage"
           ref="chatContainer"
         />
         
@@ -74,7 +75,7 @@
                   </div>
                 </div>
               </div>
-              <div class="chat-input" @click="focusTextInput" contenteditable="true" ref="textInput" @input="handleTextInput" placeholder="询问任何问题">
+              <div class="chat-input" @click="focusTextInput" contenteditable="true" ref="textInput" @input="handleTextInput" @keydown="handleInputKeyDown" placeholder="询问任何问题">
               </div>
               <input
                 type="file"
@@ -303,6 +304,9 @@ export default {
       
       // 初始化语音识别
       this.initSpeechRecognition();
+      
+      // 添加全局快捷键监听器
+      window.addEventListener('keydown', this.handleKeyDown);
   },
   beforeDestroy() {
     if (this.saveTimer) {
@@ -318,6 +322,9 @@ export default {
     // 清理点击外部事件监听器
     document.removeEventListener('click', this.handleClickOutside);
     document.removeEventListener('touchstart', this.handleClickOutside);
+    
+    // 清理全局快捷键监听器
+    window.removeEventListener('keydown', this.handleKeyDown);
   },
   methods: {
 
@@ -744,6 +751,35 @@ export default {
       this.handleSend();
     },
     
+    // 消息编辑和重新发送
+
+    
+    // 消息引用回复
+    handleQuoteMessage(content) {
+      // 将内容格式化为 Markdown 引用块
+      const quoteText = `> ${content.split('\n').join('\n> ')}\n\n`;
+      
+      // 将引用文本追加到输入框
+      if (this.$refs.textInput) {
+        const currentContent = this.$refs.textInput.textContent || '';
+        this.$refs.textInput.textContent = currentContent + quoteText;
+        
+        // 更新userInput以保持同步
+        this.userInput = this.$refs.textInput.textContent;
+        
+        // 聚焦到输入框
+        this.focusTextInput();
+        
+        // 将光标移动到末尾
+        const range = document.createRange();
+        const selection = window.getSelection();
+        range.selectNodeContents(this.$refs.textInput);
+        range.collapse(false);
+        selection.removeAllRanges();
+        selection.addRange(range);
+      }
+    },
+    
     async handleSend() {
       // 优先使用userInput（来自示例问题），否则从 contenteditable div 获取文本内容
       const userText = this.userInput || (this.$refs.textInput ? this.$refs.textInput.textContent.trim() || '' : '');
@@ -974,12 +1010,72 @@ export default {
         // 可以在这里添加自动发送逻辑，或者让用户手动发送
         // this.handleSend(); // 如果需要自动发送，取消注释这行
       }
+    },
+    
+    // 输入框键盘事件处理
+    handleInputKeyDown(event) {
+      if (event.key === 'Enter') {
+        if (event.shiftKey) {
+          // Shift + Enter: 换行，不做任何处理，让默认行为发生
+          return;
+        } else {
+          // 单独 Enter: 发送消息
+          event.preventDefault();
+          this.handleSend();
+        }
+      }
+    },
+    
+    // 全局快捷键处理
+    handleKeyDown(event) {
+      // Ctrl + K 或 Cmd + K 新建对话
+      if ((event.ctrlKey || event.metaKey) && event.key === 'k') {
+        event.preventDefault(); // 防止浏览器默认行为（如搜索）
+        this.newChat();
+      }
     }
   },
   
   mounted() {
+    // 加载保存的主题
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme === 'dark') {
+      this.isDarkMode = true;
+      document.documentElement.classList.add('dark-mode');
+    }
+    
+    // 加载保存的侧边栏状态
+    const savedSidebarState = localStorage.getItem('sidebarCollapsed');
+    if (savedSidebarState !== null) {
+      this.isSidebarCollapsed = JSON.parse(savedSidebarState);
+    }
+    
+    // 添加窗口大小变化监听器
+    window.addEventListener('resize', this.handleResize);
+    
+    // 添加点击外部事件监听器
+    document.addEventListener('click', this.handleClickOutside);
+    
+    // 添加全局键盘事件监听器
+    window.addEventListener('keydown', this.handleKeyDown);
+    
     // 初始化语音识别
     this.initSpeechRecognition();
+  },
+  
+  beforeUnmount() {
+    // 清理定时器
+    if (this.saveTimer) {
+      clearTimeout(this.saveTimer);
+    }
+    if (this.inputAreaTimer) {
+      clearTimeout(this.inputAreaTimer);
+    }
+    
+    // 移除事件监听器
+    window.removeEventListener('resize', this.handleResize);
+    document.removeEventListener('click', this.handleClickOutside);
+    window.removeEventListener('keydown', this.handleKeyDown);
   }
 };
 </script>

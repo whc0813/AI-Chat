@@ -88,22 +88,17 @@
         </div>
       </div>
       
-      <div v-for="(message, index) in messages" :key="index" :class="['message', message.role]">
-        <div v-if="message.type === 'combined'">
-            <div v-if="message.thinking" class="thinking-content">
-                <div class="thinking-header" @click="toggleThinking(index)">
-                <span>思考过程：</span>
-                <span class="toggle-icon">{{ isThinkingExpanded(index) ? '▼' : '▶' }}</span>
-                </div>
-                <div class="thinking-text" v-if="isThinkingExpanded(index)" v-html="renderMarkdown(message.thinking)"></div>
-            </div>
-            <div class="plain-content" v-if="message.role === 'user'" v-text="message.content"></div>
-            <div class="plain-content" v-else v-html="renderMarkdown(message.content)"></div>
-        </div>
-        <div v-else>
-            <div v-if="message.role === 'user'" class="plain-content" v-text="message.content"></div>
-            <div v-else class="plain-content" v-html="renderMarkdown(message.content)"></div>
-        </div>
+      <div v-for="(message, index) in messages" :key="message.id" :class="['message', message.role]">
+        <div v-if="message.type === 'combined' && message.thinking" class="thinking-content"> 
+          <div class="thinking-header" @click="toggleThinking(index)"> 
+            <span>思考过程：</span> 
+            <span class="toggle-icon">{{ isThinkingExpanded(index) ? '▼' : '▶' }}</span> 
+          </div> 
+          <div class="thinking-text" v-if="isThinkingExpanded(index)" v-html="renderMarkdown(message.thinking)"></div> 
+        </div> 
+
+        <div class="plain-content" v-if="message.role === 'user'" v-text="message.content"></div> 
+        <div class="plain-content" v-else v-html="renderMarkdown(message.content)"></div>
 
         <div v-if="message.attachment" class="message-attachment-info" @click="openFilePreview(message.attachment)">
             <span class="file-icon">{{ getFileIcon(message.attachment.name) }}</span>
@@ -135,11 +130,28 @@
           </div>
         </div>
 
+        <!-- 用户消息操作按钮 -->
+        <div v-if="message.role === 'user'" class="message-actions">
+          <button class="action-btn" @click="quoteMessage(message)" title="引用">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 21c3 0 7-1 7-8V5c0-1.25-.756-2.017-2-2H4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2 1 0 1 0 1 1v1c0 1-1 2-2 2s-1 .008-1 1.031V20c0 1 0 1 1 1z"></path>
+              <path d="M15 21c3 0 7-1 7-8V5c0-1.25-.757-2.017-2-2h-4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2h.75c0 2.25.25 4-2.75 4v3c0 1 0 1 1 1z"></path>
+            </svg>
+          </button>
+        </div>
+        
+        <!-- 助手消息操作按钮 -->
         <div v-if="message.role === 'assistant'" class="message-actions">
           <button class="action-btn" @click="copyMessage(message.content,$event)" title="复制">
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
               <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+            </svg>
+          </button>
+          <button class="action-btn" @click="quoteMessage(message)" title="引用">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 21c3 0 7-1 7-8V5c0-1.25-.756-2.017-2-2H4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2 1 0 1 0 1 1v1c0 1-1 2-2 2s-1 .008-1 1.031V20c0 1 0 1 1 1z"></path>
+              <path d="M15 21c3 0 7-1 7-8V5c0-1.25-.757-2.017-2-2h-4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2h.75c0 2.25.25 4-2.75 4v3c0 1 0 1 1 1z"></path>
             </svg>
           </button>
           <button v-if="isLastAssistantMessage(index)" class="action-btn" @click="regenerateContent" title="重新生成">
@@ -284,7 +296,8 @@ export default {
     'toggle-sidebar',
     'generating-changed',
     'input-changed',
-    'send-user-message'
+    'send-user-message',
+    'quote-message'
   ],
   props: {
     messages: {
@@ -479,8 +492,30 @@ export default {
       this.$emit('send-user-message', question);
     },
     
-
+    // 生成唯一ID
+    generateId() {
+      return Date.now().toString(36) + Math.random().toString(36).substr(2);
+    },
     
+    // 消息引用功能
+    quoteMessage(message) {
+      // 检查是否有选中的文本
+      const selection = window.getSelection();
+      let contentToQuote = message.content;
+      
+      if (selection && selection.toString().trim()) {
+        // 如果有选中文本，使用选中的内容
+        contentToQuote = selection.toString().trim();
+      }
+      
+      this.$emit('quote-message', contentToQuote);
+      
+      // 清除选择
+      if (selection) {
+        selection.removeAllRanges();
+      }
+    },
+
     isLastAssistantMessage(index) {
       // 找到最后一条助手消息的索引
       const lastAssistantIndex = this.messages.map(m => m.role).lastIndexOf('assistant');
@@ -836,6 +871,7 @@ export default {
         };
         
         const userMessageForUI = {
+            id: this.generateId(),
             role: 'user',
             content: userText,
             type: 'simple',
@@ -1093,6 +1129,7 @@ export default {
         const duration = this.requestStartTime ? endTime - this.requestStartTime : 0;
         
         const aiMessage = {
+            id: this.generateId(),
             role: 'assistant',
             content: this.currentAnswer,
             type: this.selectedModel === 'deepseek-reasoner' ? 'combined' : 'simple',
@@ -5254,6 +5291,8 @@ button[disabled]:hover {
     width: 16px;
     height: 16px;
   }
+
+
 
   :deep(pre) {
     font-size: 13px !important;

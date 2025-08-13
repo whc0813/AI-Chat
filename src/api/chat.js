@@ -42,7 +42,7 @@ export const streamWithGLM = async (messages, onChunk, apiKey, styleConfig = nul
     const response = await fetch(GLM_API_URL, {
       method: 'POST',
       headers: {
-        "Authorization": `Bearer ${apiKey}`,
+        "Authorization": `Bearer ${apiKey.replace(/[^\x00-\x7F]/g, '')}`,
         "Content-Type": "application/json",
         "Accept": "text/event-stream"
       },
