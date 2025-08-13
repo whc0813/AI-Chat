@@ -246,6 +246,14 @@
             <span class="share-icon">🌐</span>
             <span class="share-text">导出为HTML</span>
           </button>
+          <button class="share-option" @click="exportAsTxt">
+            <span class="share-icon">📃</span>
+            <span class="share-text">导出为TXT</span>
+          </button>
+          <button class="share-option" @click="exportAsWord">
+            <span class="share-icon">📄</span>
+            <span class="share-text">导出为Word</span>
+          </button>
           <button class="share-option" @click="exportAsImage">
             <span class="share-icon">🖼️</span>
             <span class="share-text">导出为图片</span>
@@ -262,6 +270,8 @@ import MarkdownIt from 'markdown-it';
 import hljs from 'highlight.js';
 import mammoth from 'mammoth';
 import * as XLSX from 'xlsx';
+import { Document, Packer, Paragraph, TextRun, HeadingLevel, Table, TableRow, TableCell, WidthType } from 'docx';
+import { marked } from 'marked';
 
 export default {
   emits: [
@@ -1785,6 +1795,434 @@ export default {
       } catch (error) {
         console.error('图片导出失败:', error);
         alert('图片导出失败，请稍后再试');
+      }
+    },
+
+    // 导出为TXT
+    exportAsTxt() {
+      const conversation = this.getCurrentConversation();
+      if (!conversation) return;
+      
+      // 检查是否有模型切换
+      const usedModels = new Set();
+      conversation.messages.forEach(message => {
+        if (message.role === 'assistant' && message.stats && message.stats.model) {
+          usedModels.add(message.stats.model);
+        }
+      });
+      
+      let text = `对话标题: ${conversation.title}\n`;
+      text += `创建时间: ${new Date(conversation.createdAt).toLocaleString()}\n`;
+      text += `更新时间: ${new Date(conversation.updatedAt).toLocaleString()}\n`;
+      
+      if (usedModels.size > 1) {
+        text += `使用模型: ${Array.from(usedModels).map(model => this.getModelName(model)).join(', ')} (对话中切换)\n\n`;
+      } else if (usedModels.size === 1) {
+        text += `模型: ${this.getModelName(Array.from(usedModels)[0])}\n\n`;
+      } else {
+        text += `模型: ${this.getModelName(this.selectedModel || conversation.model)}\n\n`;
+      }
+      text += '='.repeat(50) + '\n\n';
+      
+      conversation.messages.forEach((message, index) => {
+        if (message.role === 'user') {
+          text += `【用户】\n${message.content}\n\n`;
+        } else if (message.role === 'assistant') {
+          const modelInfo = message.stats && message.stats.model ? ` (${this.getModelName(message.stats.model)})` : '';
+          text += `【AI助手${modelInfo}】\n`;
+          if (message.type === 'combined' && message.thinking) {
+            text += `\n[思考过程]\n${message.thinking}\n\n`;
+          }
+          text += `${message.content}\n\n`;
+        }
+        if (index < conversation.messages.length - 1) {
+          text += '-'.repeat(30) + '\n\n';
+        }
+      });
+      
+      const safeTitle = conversation.title.replace(/[<>:"/\\|?*]/g, '_').trim();
+      const fileName = safeTitle || 'untitled_chat';
+      const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      this.downloadFile(url, `${fileName}.txt`);
+      URL.revokeObjectURL(url);
+      this.closeShareModal();
+    },
+
+    // 这个新方法将作为所有转换逻辑的入口
+    async convertMarkdownToDocx(markdown) {
+      if (!markdown || typeof markdown !== 'string') {
+        return [new Paragraph({ text: '' })];
+      }
+
+      try {
+        const tokens = marked.lexer(markdown);
+        let elements = [];
+
+        for (const token of tokens) {
+          const converted = await this.tokenToDocx(token);
+          if (Array.isArray(converted)) {
+            elements.push(...converted);
+          } else if (converted) {
+            elements.push(converted);
+          }
+        }
+        return elements.length > 0 ? elements : [new Paragraph({ text: '' })];
+      } catch (error) {
+        console.error('Markdown转换失败:', error);
+        return [new Paragraph({ text: markdown })];
+      }
+    },
+
+    // 递归处理内联元素（粗体、斜体等）
+    parseInline(tokens) {
+      const runs = [];
+      for (const token of tokens) {
+        switch (token.type) {
+          case 'strong':
+            this.parseInline(token.tokens).forEach(run => {
+              if (!run.options) run.options = {};
+              run.options.bold = true;
+              runs.push(run);
+            });
+            break;
+          case 'em':
+            this.parseInline(token.tokens).forEach(run => {
+              if (!run.options) run.options = {};
+              run.options.italics = true;
+              runs.push(run);
+            });
+            break;
+          case 'codespan':
+            runs.push(new TextRun({ text: token.text, font: 'Courier New' }));
+            break;
+          case 'link':
+            this.parseInline(token.tokens).forEach(run => {
+              if (!run.options) run.options = {};
+              run.options.color = '0066CC';
+              run.options.underline = {};
+              runs.push(run);
+            });
+            break;
+          case 'del':
+            this.parseInline(token.tokens).forEach(run => {
+              if (!run.options) run.options = {};
+              run.options.strike = true;
+              runs.push(run);
+            });
+            break;
+          case 'text':
+            runs.push(new TextRun(token.text));
+            break;
+          default:
+            // 对于未处理的token类型，尝试提取文本内容而不是原始Markdown
+            if (token.text) {
+              runs.push(new TextRun(token.text));
+            } else if (token.tokens && token.tokens.length > 0) {
+              // 如果有嵌套tokens，递归处理
+              runs.push(...this.parseInline(token.tokens));
+            }
+        }
+      }
+      return runs;
+    },
+
+    // 主 token 转换器
+    async tokenToDocx(token) {
+      switch (token.type) {
+        case 'heading':
+          return new Paragraph({
+            children: this.parseInline(token.tokens),
+            heading: HeadingLevel[`HEADING_${token.depth}`],
+          });
+        case 'paragraph':
+          return new Paragraph({ children: this.parseInline(token.tokens) });
+        case 'list': {
+          const items = [];
+          for (const item of token.items) {
+            items.push(new Paragraph({
+              children: this.parseInline(item.tokens),
+              bullet: { level: 0 },
+            }));
+          }
+          return items;
+        }
+        case 'code': {
+          // 为每一行代码创建一个新的 Paragraph 来保证换行
+          const codeLines = token.text.split('\n');
+          return codeLines.map(line => new Paragraph({
+            children: [new TextRun({
+              text: line,
+              font: 'Courier New',
+              size: 20
+            })],
+            shading: { fill: "F5F5F5" },
+          }));
+        }
+        case 'table': {
+          const header = new TableRow({
+            children: token.header.map(cell => new TableCell({
+              children: [new Paragraph({ children: this.parseInline(cell.tokens) })],
+              shading: { fill: "F0F0F0" },
+            })),
+            tableHeader: true,
+          });
+          const rows = token.rows.map(row => new TableRow({
+            children: row.map(cell => new TableCell({
+              children: [new Paragraph({ children: this.parseInline(cell.tokens) })],
+            })),
+          }));
+          return new Table({
+            rows: [header, ...rows],
+            width: { size: 100, type: WidthType.PERCENTAGE },
+          });
+        }
+        case 'space':
+          return new Paragraph(""); // 空行
+        case 'hr':
+          return new Paragraph({ border: { bottom: { color: "auto", space: 1, value: "single", size: 6 } } });
+        default:
+          // 对于未处理的token类型，尝试提取文本内容而不是原始Markdown
+          if (token.text) {
+            return new Paragraph({ children: [new TextRun(token.text)] });
+          } else if (token.tokens && token.tokens.length > 0) {
+            return new Paragraph({ children: this.parseInline(token.tokens) });
+          }
+          return null;
+      }
+      return null;
+    },
+
+    // 导出为Word文档
+    async exportAsWord() {
+      const conversation = this.getCurrentConversation();
+      if (!conversation) return;
+      
+      try {
+        
+        // 检查是否有模型切换
+        const usedModels = new Set();
+        conversation.messages.forEach(message => {
+          if (message.role === 'assistant' && message.stats && message.stats.model) {
+            usedModels.add(message.stats.model);
+          }
+        });
+        
+        let modelInfo;
+        if (usedModels.size > 1) {
+          modelInfo = `${Array.from(usedModels).map(model => this.getModelName(model)).join(', ')} (对话中切换)`;
+        } else if (usedModels.size === 1) {
+          modelInfo = this.getModelName(Array.from(usedModels)[0]);
+        } else {
+          modelInfo = this.getModelName(this.selectedModel || conversation.model);
+        }
+        
+        const children = [];
+        
+        // 添加主标题 - 使用Heading1样式
+        children.push(
+          new Paragraph({
+            text: conversation.title,
+            heading: HeadingLevel.HEADING_1,
+          })
+        );
+        
+        children.push(new Paragraph({ text: "" })); // 空行
+        
+        // 添加元信息区域 - 使用引用样式
+        children.push(
+          new Paragraph({
+            children: [
+              new TextRun({ text: "📋 对话信息", bold: true, size: 24 })
+            ],
+            heading: HeadingLevel.HEADING_2
+          })
+        );
+        
+        children.push(
+          new Paragraph({
+            children: [
+              new TextRun({ text: "📅 创建时间: ", bold: true }),
+              new TextRun(new Date(conversation.createdAt).toLocaleString())
+            ],
+            indent: { left: 720 } // 缩进
+          })
+        );
+        
+        children.push(
+          new Paragraph({
+            children: [
+              new TextRun({ text: "🔄 更新时间: ", bold: true }),
+              new TextRun(new Date(conversation.updatedAt).toLocaleString())
+            ],
+            indent: { left: 720 }
+          })
+        );
+        
+        children.push(
+          new Paragraph({
+            children: [
+              new TextRun({ text: "🤖 使用模型: ", bold: true }),
+              new TextRun(modelInfo)
+            ],
+            indent: { left: 720 }
+          })
+        );
+        
+        children.push(new Paragraph({ text: "" })); // 空行
+        
+        // 添加分隔线
+        children.push(
+          new Paragraph({
+            children: [
+              new TextRun({ text: "─".repeat(80), color: "CCCCCC" })
+            ]
+          })
+        );
+        
+        children.push(new Paragraph({ text: "" })); // 空行
+        
+        // 添加对话内容标题
+        children.push(
+          new Paragraph({
+            children: [
+              new TextRun({ text: "💬 对话内容", bold: true, size: 24 })
+            ],
+            heading: HeadingLevel.HEADING_2
+          })
+        );
+        
+        children.push(new Paragraph({ text: "" })); // 空行
+        
+        // 添加对话内容
+        for (let index = 0; index < conversation.messages.length; index++) {
+          const message = conversation.messages[index];
+          
+          if (message.role === 'user') {
+            // 用户消息 - 使用Heading3样式
+            children.push(
+              new Paragraph({
+                children: [
+                  new TextRun({ text: "👤 用户", bold: true, color: "0066CC", size: 22 })
+                ],
+                heading: HeadingLevel.HEADING_3
+              })
+            );
+            
+            // 使用新的Markdown转换方法处理用户消息内容
+            const userElements = await this.convertMarkdownToDocx(message.content);
+            userElements.forEach(element => {
+              // 为用户消息添加缩进
+              if (element.options && element.options.indent) {
+                element.options.indent.left = (element.options.indent.left || 0) + 360;
+              } else {
+                element.options = { ...element.options, indent: { left: 360 } };
+              }
+              children.push(element);
+            });
+            
+          } else if (message.role === 'assistant') {
+            const modelInfo = message.stats && message.stats.model ? ` (${this.getModelName(message.stats.model)})` : '';
+            
+            // AI助手消息 - 使用Heading3样式
+            children.push(
+              new Paragraph({
+                children: [
+                  new TextRun({ text: `🤖 AI助手${modelInfo}`, bold: true, color: "009900", size: 22 })
+                ],
+                heading: HeadingLevel.HEADING_3
+              })
+            );
+            
+            // 思考过程 - 使用特殊样式
+            if (message.type === 'combined' && message.thinking) {
+              children.push(
+                new Paragraph({
+                  children: [
+                    new TextRun({ text: "💭 思考过程", bold: true, italics: true, color: "FF6600", size: 20 })
+                  ],
+                  indent: { left: 360 }
+                })
+              );
+              
+              // 使用新的Markdown转换方法处理思考过程内容
+              const thinkingElements = await this.convertMarkdownToDocx(message.thinking);
+              thinkingElements.forEach(element => {
+                // 为思考过程添加更深的缩进和灰色样式
+                if (element.options && element.options.indent) {
+                  element.options.indent.left = (element.options.indent.left || 0) + 720;
+                } else {
+                  element.options = { ...element.options, indent: { left: 720 } };
+                }
+                
+                // 为思考过程的文本添加灰色和斜体
+                if (element.root && element.root.children) {
+                  element.root.children.forEach(child => {
+                    if (child.text !== undefined) {
+                      child.color = child.color || '666666';
+                      child.italics = true;
+                    }
+                  });
+                }
+                
+                children.push(element);
+              });
+              
+              children.push(new Paragraph({ text: "" })); // 空行
+            }
+            
+            // 使用新的Markdown转换方法处理AI回复内容
+            const assistantElements = await this.convertMarkdownToDocx(message.content);
+            assistantElements.forEach(element => {
+              // 为AI消息添加缩进
+              if (element.options && element.options.indent) {
+                element.options.indent.left = (element.options.indent.left || 0) + 360;
+              } else {
+                element.options = { ...element.options, indent: { left: 360 } };
+              }
+              children.push(element);
+            });
+          }
+          
+          // 消息间分隔
+          if (index < conversation.messages.length - 1) {
+            children.push(new Paragraph({ text: "" })); // 空行
+            children.push(
+              new Paragraph({
+                children: [
+                  new TextRun({ text: "━".repeat(60), color: "E0E0E0" })
+                ]
+              })
+            );
+            children.push(new Paragraph({ text: "" })); // 空行
+          }
+        }
+        
+        const doc = new Document({
+          sections: [{
+            properties: {},
+            children: children
+          }]
+        });
+        
+        const buffer = await Packer.toBlob(doc);
+        const url = URL.createObjectURL(buffer);
+        
+        const safeTitle = conversation.title.replace(/[<>:"/\\|?*]/g, '_').trim();
+        const fileName = safeTitle || 'untitled_chat';
+        this.downloadFile(url, `${fileName}.docx`);
+        URL.revokeObjectURL(url);
+        this.closeShareModal();
+        
+      } catch (error) {
+        console.error('Word文档导出失败:', error);
+        let errorMessage = 'Word文档导出失败';
+        if (error.message) {
+          errorMessage += ': ' + error.message;
+        } else {
+          errorMessage += '，请稍后再试';
+        }
+        alert(errorMessage);
       }
     },
 
@@ -4738,7 +5176,7 @@ button[disabled]:hover {
 
 .share-options {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr;
   gap: 12px;
 }
 
@@ -4789,6 +5227,7 @@ button[disabled]:hover {
   }
   
   .share-options {
+    grid-template-columns: 1fr 1fr;
     gap: 10px;
   }
   
