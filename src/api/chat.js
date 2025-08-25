@@ -165,9 +165,10 @@ export const streamWithDeepSeek = async (messages, model, onChunk, apiKey, style
   }
 };
 
-export const summarizeTitle = async (messages) => {
+export const summarizeTitle = async (messages, apiKey) => {
   try {
-    const response = await deepseek.chat.completions.create({
+    const deepseekClient = getDeepSeekClient(apiKey);
+    const response = await deepseekClient.chat.completions.create({
       messages: [
         {
           role: "system",

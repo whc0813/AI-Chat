@@ -25,6 +25,7 @@
           :user-input="userInput"
           :is-generating="isGenerating"
           :reply-style="replyStyle"
+          :is-deep-thinking="isDeepThinking"
           @send-message="handleSendMessage"
           @delete-message="handleDeleteMessage"
           @clear-chat="clearCurrentChat"
@@ -84,6 +85,19 @@
                 style="display: none"
                 accept=".doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.txt,text/plain"
               />
+              <!-- 深度思考开关按钮 -->
+              <div class="deep-thinking-toggle" :class="{ disabled: !isDeepSeekModel }" :title="!isDeepSeekModel ? '仅 DeepSeek 模型支持' : ''">
+                <button 
+                  class="thinking-toggle-btn"
+                  :class="{ active: isDeepThinking, disabled: !isDeepSeekModel }"
+                  @click="toggleDeepThinking"
+                  :disabled="!isDeepSeekModel"
+                >
+                  <span class="toggle-icon">🧠</span>
+                  <span class="toggle-text sm:inline hidden">{{ isDeepThinking ? '深度思考' : '快速回复' }}</span>
+                  <span class="toggle-indicator" :class="{ on: isDeepThinking }"></span>
+                </button>
+              </div>
               <div class="button-group">
                 <button 
                   class="action-btn"
@@ -185,7 +199,7 @@ export default {
         id: this.generateId(),
         title: '新对话',
         messages: [], // messages 数组现在会包含带有 attachment 的对象
-        model: 'deepseek-chat',
+        model: 'deepseek',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       }],
@@ -213,7 +227,9 @@ export default {
       showAddDropdown: false,
       // 回复风格设置
       showStyleModal: false,
-      replyStyle: localStorage.getItem('reply_style') || 'balanced'
+      replyStyle: localStorage.getItem('reply_style') || 'balanced',
+      // 深度思考开关
+      isDeepThinking: false
     };
   },
   // ... computed, watch, mounted, methods 等部分与上一轮回复中的代码相同，无需修改 ...
@@ -254,6 +270,9 @@ export default {
     },
     hasVoiceContent() {
       return this.finalTranscript || this.interimTranscript;
+    },
+    isDeepSeekModel() {
+      return this.currentConversation.model === 'deepseek';
     }
   },
   watch: {
@@ -350,7 +369,7 @@ export default {
         id: this.generateId(),
         title: '新对话',
         messages: [],
-        model: 'deepseek-chat',
+        model: 'deepseek',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };
@@ -669,7 +688,7 @@ export default {
           id: this.generateId(),
           title: '新对话',
           messages: [],
-          model: 'deepseek-chat',
+          model: 'deepseek',
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         }];
@@ -681,6 +700,12 @@ export default {
     },
     updateModel(model) {
       this.conversations[this.currentConversationIndex].model = model;
+      
+      // 如果切换到非 DeepSeek 模型，自动关闭深度思考状态
+      if (model !== 'deepseek' && this.isDeepThinking) {
+        this.isDeepThinking = false;
+        localStorage.setItem('deep_thinking', false);
+      }
     },
     toggleSidebar() {
       if (this.$refs.sidebar) {
@@ -849,6 +874,15 @@ export default {
        this.replyStyle = style;
        localStorage.setItem('reply_style', style);
        this.closeStyleModal();
+     },
+     
+     toggleDeepThinking() {
+       // 只有在选择 DeepSeek 模型时才允许切换
+       if (!this.isDeepSeekModel) {
+         return;
+       }
+       this.isDeepThinking = !this.isDeepThinking;
+       localStorage.setItem('deep_thinking', this.isDeepThinking);
      },
      
      handleClickOutside(event) {
@@ -1048,6 +1082,12 @@ export default {
     const savedSidebarState = localStorage.getItem('sidebarCollapsed');
     if (savedSidebarState !== null) {
       this.isSidebarCollapsed = JSON.parse(savedSidebarState);
+    }
+    
+    // 加载保存的深度思考状态
+    const savedDeepThinking = localStorage.getItem('deep_thinking');
+    if (savedDeepThinking !== null) {
+      this.isDeepThinking = JSON.parse(savedDeepThinking);
     }
     
     // 添加窗口大小变化监听器
@@ -1468,14 +1508,139 @@ html, body {
 }
 
 .dropdown-icon {
-  margin-right: 12px;
-  font-size: 16px;
+  margin-right: 8px;
+  font-size: 14px;
 }
 
 .dropdown-text {
   font-size: 14px;
   color: var(--text-color);
+}
+
+/* 深度思考开关样式 */
+.deep-thinking-toggle {
+  display: flex;
+  align-items: center;
+  margin: 0 4px;
+}
+
+.deep-thinking-toggle.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.thinking-toggle-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  background: var(--secondary-color);
+  color: var(--text-color);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 12px;
+  white-space: nowrap;
+  min-width: 80px;
+  justify-content: center;
+}
+
+.thinking-toggle-btn:hover:not(.disabled) {
+  background: var(--primary-color);
+  color: white;
+  border-color: var(--primary-color);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.2);
+}
+
+.thinking-toggle-btn.active {
+  background: var(--primary-color);
+  color: white;
+  border-color: var(--primary-color);
+}
+
+.thinking-toggle-btn.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.toggle-icon {
+  font-size: 14px;
+}
+
+.toggle-text {
   font-weight: 500;
+}
+
+.toggle-indicator {
+  width: 12px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--border-color);
+  position: relative;
+  transition: all 0.2s ease;
+}
+
+.toggle-indicator.on {
+  background: #10b981;
+}
+
+.toggle-indicator::after {
+  content: '';
+  position: absolute;
+  top: -1px;
+  left: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: white;
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.toggle-indicator.on::after {
+  transform: translateX(6px);
+}
+
+/* 深度思考开关移动端响应式样式 */
+@media (max-width: 640px) {
+  .deep-thinking-toggle {
+    margin: 0 2px;
+  }
+  
+  .thinking-toggle-btn {
+    padding: 4px 8px;
+    font-size: 11px;
+    min-width: 60px;
+    gap: 4px;
+    border-radius: 12px;
+  }
+  
+  .toggle-icon {
+    font-size: 12px;
+  }
+  
+  .toggle-text {
+    display: none; /* 在小屏幕上隐藏文字，只显示图标 */
+  }
+  
+  .toggle-indicator {
+    width: 10px;
+    height: 5px;
+    border-radius: 2.5px;
+  }
+  
+  .toggle-indicator::after {
+    width: 7px;
+    height: 7px;
+    top: -1px;
+  }
+  
+  .toggle-indicator.on::after {
+    transform: translateX(4px);
+  }
 }
 
 .button-group {
@@ -1789,6 +1954,25 @@ html, body {
   display: none;
 }
 
+/* 平板端适配 */
+@media (max-width: 1024px) and (min-width: 769px) {
+  .input-controls {
+    gap: 10px;
+    padding: 8px 14px;
+  }
+  
+  .thinking-toggle-btn {
+    padding: 5px 10px;
+    font-size: 11px;
+    min-width: 70px;
+    gap: 5px;
+  }
+  
+  .toggle-text {
+    font-size: 11px;
+  }
+}
+
 /* 移动端适配 */
 @media (max-width: 768px) {
   .input-area {
@@ -1847,6 +2031,32 @@ html, body {
     display: flex;
     align-items: center;
   }
+  
+  /* 深度思考开关移动端优化 */
+  .deep-thinking-toggle {
+    margin: 0 2px;
+  }
+  
+  .thinking-toggle-btn {
+    padding: 4px 8px;
+    font-size: 11px;
+    min-width: 60px;
+    gap: 4px;
+    border-radius: 12px;
+  }
+  
+  .toggle-text {
+    display: none; /* 移动端隐藏文字，只显示图标 */
+  }
+  
+  .toggle-icon {
+    font-size: 12px;
+  }
+  
+  .toggle-indicator {
+    width: 10px;
+    height: 5px;
+  }
 }
 
 /* 极小屏幕优化 */
@@ -1870,6 +2080,33 @@ html, body {
   
   .button-group {
     gap: 4px;
+  }
+  
+  /* 深度思考开关极小屏幕优化 */
+  .deep-thinking-toggle {
+    margin: 0 1px;
+  }
+  
+  .thinking-toggle-btn {
+    padding: 3px 6px;
+    font-size: 10px;
+    min-width: 50px;
+    gap: 3px;
+    border-radius: 10px;
+  }
+  
+  .toggle-icon {
+    font-size: 11px;
+  }
+  
+  .toggle-indicator {
+    width: 8px;
+    height: 4px;
+  }
+  
+  .toggle-indicator::after {
+    width: 6px;
+    height: 6px;
   }
 }
 </style>

@@ -306,7 +306,7 @@ export default {
     },
     currentModel: {
       type: String,
-      default: 'deepseek-chat'
+      default: 'deepseek'
     },
     currentTitle: {
       type: String,
@@ -323,6 +323,10 @@ export default {
     replyStyle: {
       type: String,
       default: 'balanced'
+    },
+    isDeepThinking: {
+      type: Boolean,
+      default: false
     }
   },
   data() {
@@ -345,7 +349,7 @@ export default {
     });
 
     return {
-      selectedModel: this.currentModel,
+      selectedModel: this.currentModel === 'deepseek-chat' || this.currentModel === 'deepseek-reasoner' ? 'deepseek' : this.currentModel,
       isStreaming: false,
       currentThinking: '',
       currentAnswer: '',
@@ -381,16 +385,10 @@ export default {
 
       availableModels: [
         {
-          value: 'deepseek-chat',
-          name: 'DeepSeek-V3',
-          description: '强大的通用对话模型，擅长推理和创作',
+          value: 'deepseek',
+          name: 'DeepSeek',
+          description: '强大的通用对话模型，支持深度思考模式',
           icon: '🧠'
-        },
-        {
-          value: 'deepseek-reasoner',
-          name: 'DeepSeek-R1',
-          description: '专业推理模型，具备强大的逻辑思维能力',
-          icon: '🔍'
         },
         {
           value: 'glm-4-flash',
@@ -856,6 +854,13 @@ export default {
             return;
         }
 
+        // 根据 isDeepThinking 状态决定实际使用的模型
+        let actualModel = this.selectedModel;
+        if (this.selectedModel === 'deepseek') {
+            actualModel = this.isDeepThinking ? 'deepseek-reasoner' : 'deepseek-chat';
+        }
+        console.log('发送消息 - 选择的模型:', this.selectedModel, '深度思考状态:', this.isDeepThinking, '实际使用模型:', actualModel);
+
         this.$emit('generating-changed', true);
         this.isStreaming = true;
         this.currentThinking = '';
@@ -865,7 +870,7 @@ export default {
         // 记录请求开始时间
         this.requestStartTime = Date.now();
         this.currentRequestStats = {
-            model: this.selectedModel,
+            model: actualModel,
             startTime: this.requestStartTime,
             tokens: null
         };
@@ -906,7 +911,7 @@ export default {
             const messagesForAPI = this.formatMessagesForAPI(this.messages);
             const result = await chatWithAI(
                 messagesForAPI,
-                this.selectedModel,
+                actualModel,
                 (content, type) => {
                     if (type === 'thinking') {
                         this.currentThinking += content;
@@ -1026,6 +1031,12 @@ export default {
         if (this.isGenerating) return;
         const lastUserMessage = this.messages.filter(m => m.role === 'user').pop();
         if (lastUserMessage) {
+            // 根据 isDeepThinking 状态决定实际使用的模型
+            let actualModel = this.selectedModel;
+            if (this.selectedModel === 'deepseek') {
+                actualModel = this.isDeepThinking ? 'deepseek-reasoner' : 'deepseek-chat';
+            }
+
             this.$emit('generating-changed', true);
             this.isStreaming = true;
             this.currentThinking = '';
@@ -1035,7 +1046,7 @@ export default {
             // 记录请求开始时间
             this.requestStartTime = Date.now();
             this.currentRequestStats = {
-                model: this.selectedModel,
+                model: actualModel,
                 startTime: this.requestStartTime,
                 tokens: null
             };
@@ -1068,7 +1079,7 @@ export default {
                 const messagesForAPI = this.formatMessagesForAPI(this.messages);
                 const result = await chatWithAI(
                     messagesForAPI,
-                    this.selectedModel,
+                    actualModel,
                     (content, type) => {
                         if (type === 'thinking') {
                             this.currentThinking += content;
@@ -1128,20 +1139,21 @@ export default {
         const endTime = Date.now();
         const duration = this.requestStartTime ? endTime - this.requestStartTime : 0;
         
+        const actualModel = this.currentRequestStats?.model || this.selectedModel;
         const aiMessage = {
             id: this.generateId(),
             role: 'assistant',
             content: this.currentAnswer,
-            type: this.selectedModel === 'deepseek-reasoner' ? 'combined' : 'simple',
+            type: actualModel === 'deepseek-reasoner' ? 'combined' : 'simple',
             isStreaming: false,
             stats: {
-                model: this.selectedModel,
+                model: actualModel,
                 duration: duration,
                 tokens: this.currentRequestStats?.tokens || null,
                 timestamp: endTime
             }
         };
-        if (this.selectedModel === 'deepseek-reasoner') {
+        if (actualModel === 'deepseek-reasoner') {
             aiMessage.thinking = this.currentThinking;
             aiMessage.isThinkingExpanded = true;
         }
@@ -1199,7 +1211,11 @@ export default {
           if (this.currentAnswer || this.currentThinking) {
             lastMessage.content = this.currentAnswer;
             lastMessage.thinking = this.currentThinking;
-            lastMessage.type = this.selectedModel === 'deepseek-reasoner' ? 'combined' : 'simple';
+            // 根据当前选择的模型和深度思考状态决定消息类型
+            const actualModel = this.selectedModel === 'deepseek' ? 
+                (this.isDeepThinking ? 'deepseek-reasoner' : 'deepseek-chat') : 
+                this.selectedModel;
+            lastMessage.type = actualModel === 'deepseek-reasoner' ? 'combined' : 'simple';
             lastMessage.isStreaming = false;
             lastMessage.isThinkingExpanded = lastMessage.isThinkingExpanded !== false;
             this.$emit('send-message', lastMessage);
@@ -1394,7 +1410,19 @@ export default {
     },
     getModelName(modelValue) {
         const model = this.availableModels.find(m => m.value === modelValue);
-        return model ? model.name : 'Unknown Model';
+        if (model) {
+            return model.name;
+        }
+        
+        // 处理具体的deepseek子模型
+        if (modelValue === 'deepseek-chat') {
+            return 'DeepSeek Chat';
+        }
+        if (modelValue === 'deepseek-reasoner') {
+            return 'DeepSeek Reasoner';
+        }
+        
+        return 'Unknown Model';
     },
     getModelDescription(modelValue) {
         const model = this.availableModels.find(m => m.value === modelValue);
