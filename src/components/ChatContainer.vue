@@ -65,26 +65,11 @@
       <div v-if="messages.length === 0" class="welcome-container">
         <div class="welcome-content">
           <div class="welcome-header">
-            <div class="welcome-logo">🤖</div>
-            <h1 class="welcome-title">AI 智能助手</h1>
+            <h1 class="welcome-title">欢迎使用 AI 助手 ✨</h1>
+            <p class="welcome-subtitle">让我们开始对话吧</p>
           </div>
           
-          <div class="example-questions">
-            <div class="example-grid">
-              <div class="example-item" @click="sendExampleQuestion('解释一下机器学习和深度学习的区别')">
-                解释一下机器学习和深度学习的区别
-              </div>
-              <div class="example-item" @click="sendExampleQuestion('创作一首关于春天的现代诗')">
-                创作一首关于春天的现代诗
-              </div>
-              <div class="example-item" @click="sendExampleQuestion('帮我写一个Python函数来计算斐波那契数列')">
-                帮我写一个Python函数来计算斐波那契数列
-              </div>
-              <div class="example-item" @click="sendExampleQuestion('帮我制定一个学习计划来提升编程技能')">
-                帮我制定一个学习计划来提升编程技能
-              </div>
-            </div>
-          </div>
+
         </div>
       </div>
       
@@ -486,10 +471,7 @@ export default {
         document.documentElement.classList.toggle('dark-mode', this.isDarkMode);
     },
   methods: {
-    sendExampleQuestion(question) {
-      this.$emit('send-user-message', question);
-    },
-    
+
     // 生成唯一ID
     generateId() {
       return Date.now().toString(36) + Math.random().toString(36).substr(2);
@@ -617,17 +599,6 @@ export default {
         const lang = language || 'plaintext';
         const showPreviewBtn = lang.toLowerCase() === 'html';
         
-        // 将代码按行分割并添加行号，过滤末尾空行
-        const lines = highlightedCode.split('\n');
-        // 如果最后一行是空的，则移除它
-        if (lines.length > 0 && lines[lines.length - 1] === '') {
-            lines.pop();
-        }
-        const numberedLines = lines.map((line, index) => {
-            const lineNumber = index + 1;
-            return `<div class="code-line"><span class="line-number">${lineNumber}</span><span class="line-content">${line || ' '}</span></div>`;
-        }).join('');
-        
         return `
             <div class="code-block-container">
                 <div class="code-block-header">
@@ -639,12 +610,7 @@ export default {
                         </button>
                     </div>
                 </div>
-                <div class="code-block-wrapper">
-                    <div class="line-numbers-column">
-                        ${lines.map((_, index) => `<div class="line-number-item">${index + 1}</div>`).join('')}
-                    </div>
-                    <pre class="custom-code-block"><code class="hljs language-${lang}">${highlightedCode}</code></pre>
-                </div>
+                <pre class="custom-code-block"><code class="hljs language-${lang}">${highlightedCode}</code></pre>
             </div>
         `;
     },
@@ -1576,11 +1542,6 @@ export default {
       
       // applyCodeHighlighting方法已删除 - markdown-it在renderMarkdown中完成所有语法高亮
       
-    // 发送示例问题
-    sendExampleQuestion(question) {
-      // 通过emit事件通知父组件发送消息
-      this.$emit('send-user-message', question);
-    },
 
     // 显示分享模态框
     openShareModal() {
@@ -2475,6 +2436,18 @@ export default {
 :root.dark-mode .message-stats:hover {
     background: rgba(255, 255, 255, 0.08);
 }
+
+/* 暗色主题下的欢迎界面样式 */
+
+:root.dark-mode .welcome-title {
+    color: #90caf9;
+}
+
+:root.dark-mode .welcome-subtitle {
+    color: #e0e0e0;
+}
+
+
 /* ... 其他所有样式保持不变 ... */
 /* 新增文件预览样式 */
 .file-preview {
@@ -2605,16 +2578,19 @@ export default {
 /* 欢迎界面样式 */
 .welcome-container {
   display: flex;
-  justify-content: center;
-  align-items: flex-start;
-  min-height: 70vh;
-  padding: 40px 20px;
+  flex-direction: column; /* 确保内容垂直排列 */
+  justify-content: center; /* 垂直居中 */
+  align-items: center; /* 水平居中 */
+  height: 100%; /* 占满整个聊天区域的高度 */
+  overflow: hidden; /* 关键：禁用滚动 */
+  padding: 20px;
+  box-sizing: border-box; /* 确保 padding 不会增加高度 */
   animation: fadeIn 0.6s ease-out;
 }
 
 .welcome-content {
   text-align: center;
-  max-width: 900px;
+  max-width: 800px;
   width: 100%;
 }
 
@@ -2622,65 +2598,57 @@ export default {
   margin-bottom: 48px;
 }
 
-.welcome-logo {
-  font-size: 4rem;
-  margin-bottom: 16px;
-  animation: bounce 2s infinite;
-}
-
 .welcome-title {
-  font-size: 2.8rem;
+  font-size: 2.5rem;
   font-weight: 700;
-  color: var(--text-color);
+  color: #1565c0;
   margin-bottom: 16px;
   line-height: 1.2;
-  background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
 }
 
-.welcome-description {
+.welcome-subtitle {
   font-size: 1.2rem;
-  color: var(--text-secondary);
-  margin-bottom: 20px;
-  opacity: 0.9;
+  color: #424242;
+  margin-bottom: 0;
+  opacity: 0.8;
   line-height: 1.5;
 }
 
-.example-questions {
-  margin-top: 32px;
-}
 
-.example-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr); /* 2x2 网格 */
-  gap: 16px;
-  max-width: 700px; /* 限制最大宽度 */
-  margin: 0 auto;
-}
-
-.example-item {
-  padding: 16px;
-  background: var(--card-bg);
-  border: 1px solid var(--border-color);
-  border-radius: 12px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  text-align: left;
-  font-size: 14px;
-  color: var(--text-color);
-}
-
-.example-item:hover {
-  border-color: var(--primary-color);
-  background-color: var(--secondary-color);
-}
 
 /* 移动端适配 */
-@media (max-width: 768px) {
+@media (max-width: 640px) {
+  .welcome-container {
+    min-height: 60vh;
+    padding: 20px 16px;
+  }
+  
+  .welcome-title {
+    font-size: 2rem;
+  }
+  
+  .welcome-subtitle {
+    font-size: 1rem;
+  }
+  
   .example-grid {
-    grid-template-columns: 1fr; /* 移动端单列显示 */
+    grid-template-columns: 1fr;
+    gap: 16px;
+    max-width: 100%;
+  }
+  
+  .example-card {
+    padding: 14px;
+    min-height: 70px;
+  }
+  
+  .card-icon {
+    font-size: 1.2rem;
+    margin-bottom: 6px;
+  }
+  
+  .card-text {
+    font-size: 13px;
   }
 }
 
@@ -2874,7 +2842,8 @@ export default {
   justify-content: center;
   gap: 12px;
   padding: 20px 60px 20px 24px;
-  position: relative;
+  position: sticky;
+  top: 0;
   font-size: 1.3rem;
   font-weight: 700;
   color: var(--text-color);
@@ -3590,42 +3559,11 @@ button.active::before {
 }
 
 
-/* 代码块包装器 - 新结构 */
-:deep(.code-block-wrapper) {
-  display: flex;
-  background: var(--code-bg);
-  overflow: hidden;
-}
-
-/* 行号列 - 固定不滚动 */
-:deep(.line-numbers-column) {
-  background: linear-gradient(to right, rgba(14, 165, 233, 0.03), rgba(14, 165, 233, 0.01));
-  border-right: 1px solid rgba(14, 165, 233, 0.15);
-  padding: 1.5rem 0;
-  min-width: 3.5rem;
-  flex-shrink: 0;
-  user-select: none;
-  position: sticky;
-  left: 0;
-  z-index: 2;
-}
-
-:deep(.line-number-item) {
-  text-align: right;
-  padding-right: 0.8rem;
-  color: rgba(14, 165, 233, 0.5);
-  font-size: 0.88em; /* 与代码字体大小一致 */
-  line-height: 1.5;
-  font-family: 'JetBrains Mono', 'Fira Code', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
-  /* 移除固定高度，让行高自然对齐 */
-}
-
 /* 代码内容区域 - 可滚动 */
 :deep(pre.custom-code-block) {
   margin: 0;
-  border-radius: 0;
-  background: transparent;
-  flex: 1;
+  border-radius: 0 0 12px 12px;
+  background: var(--code-bg);
   overflow-x: auto;
   overflow-y: hidden;
 }
@@ -4402,6 +4340,7 @@ button[disabled]:hover {
 
   .chat-messages {
     padding: 28px 24px;
+    padding-bottom: 160px;
     gap: 20px;
   }
 
@@ -4437,9 +4376,17 @@ button[disabled]:hover {
 
   /* 输入区域优化 */
   .input-area {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
     padding: 20px 0;
-    border-radius: 0 0 20px 20px;
-    position: relative;
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(10px);
+    border-radius: 0;
+    z-index: 100;
+    border-top: 1px solid rgba(0, 0, 0, 0.1);
   }
 
   .input-content {
@@ -5127,7 +5074,7 @@ button[disabled]:hover {
   }
 
   .chat-messages {
-    padding: 20px 16px;
+    padding: 20px 16px 120px 16px;
   }
 
   .message {
@@ -5172,34 +5119,17 @@ button[disabled]:hover {
     margin-bottom: 32px;
   }
 
-  .welcome-logo {
-    font-size: 3rem;
-    margin-bottom: 12px;
-  }
-
   .welcome-title {
     font-size: 2.2rem;
     margin-bottom: 12px;
   }
 
-  .welcome-description {
+  .welcome-subtitle {
     font-size: 1rem;
     margin-bottom: 16px;
   }
 
-  .example-questions {
-    margin-top: 24px;
-  }
 
-  .example-grid {
-    grid-template-columns: 1fr;
-    gap: 12px;
-  }
-
-  .example-item {
-    padding: 16px;
-    border-radius: 12px;
-  }
 
   input {
     padding: 14px 18px;
