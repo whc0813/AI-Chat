@@ -24,7 +24,7 @@
           :current-title="currentConversation.title"
           :user-input="userInput"
           :is-generating="isGenerating"
-          :reply-style="replyStyle"
+
           :is-deep-thinking="isDeepThinking"
           @send-message="handleSendMessage"
           @delete-message="handleDeleteMessage"
@@ -70,10 +70,6 @@
                     <span class="dropdown-icon">📎</span>
                     <span class="dropdown-text">上传文件</span>
                   </div>
-                  <div class="dropdown-item" @click="openStyleSettings">
-                    <span class="dropdown-icon">🎨</span>
-                    <span class="dropdown-text">回复风格</span>
-                  </div>
                 </div>
               </div>
               <div class="chat-input" @click="focusTextInput" contenteditable="true" ref="textInput" @input="handleTextInput" @keydown="handleInputKeyDown" placeholder="询问任何问题">
@@ -83,7 +79,7 @@
                 ref="fileInput"
                 @change="handleFileChange"
                 style="display: none"
-                accept=".doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.txt,text/plain"
+                accept=".doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.txt,text/plain,.md,text/markdown"
               />
               <!-- 深度思考开关按钮 -->
               <div class="deep-thinking-toggle" :class="{ disabled: !isDeepSeekModel }" :title="!isDeepSeekModel ? '仅 DeepSeek 模型支持' : ''">
@@ -93,9 +89,8 @@
                   @click="toggleDeepThinking"
                   :disabled="!isDeepSeekModel"
                 >
-                  <span class="toggle-icon">🧠</span>
-                  <span class="toggle-text sm:inline hidden">{{ isDeepThinking ? '深度思考' : '快速回复' }}</span>
-                  <span class="toggle-indicator" :class="{ on: isDeepThinking }"></span>
+                  <span class="toggle-text sm:inline hidden">深度思考</span>
+                  <span class="toggle-icon sm:hidden">🧠</span>
                 </button>
               </div>
               <div class="button-group">
@@ -134,47 +129,7 @@
       @close="closeSettingsModal" 
     />
     
-    <!-- 回复风格设置模态框 -->
-    <div v-if="showStyleModal" class="modal-overlay" @click="closeStyleModal">
-      <div class="style-modal" @click.stop>
-        <div class="style-modal-header">
-          <h3>设置回复风格</h3>
-          <button class="close-btn" @click="closeStyleModal">✕</button>
-        </div>
-        <div class="style-modal-body">
-          <div class="style-options">
-            <div class="style-option" :class="{ active: replyStyle === 'concise' }" @click="updateReplyStyle('concise')">
-              <div class="style-icon">⚡</div>
-              <div class="style-info">
-                <div class="style-name">简洁</div>
-                <div class="style-desc">简短直接的回答 (温度: 0.3)</div>
-              </div>
-            </div>
-            <div class="style-option" :class="{ active: replyStyle === 'balanced' }" @click="updateReplyStyle('balanced')">
-              <div class="style-icon">⚖️</div>
-              <div class="style-info">
-                <div class="style-name">平衡</div>
-                <div class="style-desc">详细且结构化的回答 (温度: 0.7)</div>
-              </div>
-            </div>
-            <div class="style-option" :class="{ active: replyStyle === 'detailed' }" @click="updateReplyStyle('detailed')">
-              <div class="style-icon">📚</div>
-              <div class="style-info">
-                <div class="style-name">详细</div>
-                <div class="style-desc">全面深入的解释 (温度: 0.5)</div>
-              </div>
-            </div>
-            <div class="style-option" :class="{ active: replyStyle === 'creative' }" @click="updateReplyStyle('creative')">
-              <div class="style-icon">🎨</div>
-              <div class="style-info">
-                <div class="style-name">创意</div>
-                <div class="style-desc">富有想象力和创造性 (温度: 0.9)</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+
   </div>
 </template>
 
@@ -199,7 +154,7 @@ export default {
         id: this.generateId(),
         title: '新对话',
         messages: [], // messages 数组现在会包含带有 attachment 的对象
-        model: 'deepseek',
+        model: 'deepseek-chat',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       }],
@@ -225,9 +180,6 @@ export default {
       debounceTimer: null,
       // 下拉菜单状态
       showAddDropdown: false,
-      // 回复风格设置
-      showStyleModal: false,
-      replyStyle: localStorage.getItem('reply_style') || 'balanced',
       // 深度思考开关
       isDeepThinking: false
     };
@@ -272,7 +224,7 @@ export default {
       return this.finalTranscript || this.interimTranscript;
     },
     isDeepSeekModel() {
-      return this.currentConversation.model === 'deepseek';
+      return this.currentConversation.model && this.currentConversation.model.startsWith('deepseek');
     }
   },
   watch: {
@@ -369,7 +321,7 @@ export default {
         id: this.generateId(),
         title: '新对话',
         messages: [],
-        model: 'deepseek',
+        model: 'deepseek-chat',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };
@@ -688,7 +640,7 @@ export default {
           id: this.generateId(),
           title: '新对话',
           messages: [],
-          model: 'deepseek',
+          model: 'deepseek-chat',
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         }];
@@ -702,7 +654,7 @@ export default {
       this.conversations[this.currentConversationIndex].model = model;
       
       // 如果切换到非 DeepSeek 模型，自动关闭深度思考状态
-      if (model !== 'deepseek' && this.isDeepThinking) {
+      if (!model.startsWith('deepseek') && this.isDeepThinking) {
         this.isDeepThinking = false;
         localStorage.setItem('deep_thinking', false);
       }
@@ -861,20 +813,7 @@ export default {
       this.showAddDropdown = false;
     },
     
-    openStyleSettings() {
-      this.showStyleModal = true;
-      this.showAddDropdown = false;
-    },
-    
-    closeStyleModal() {
-      this.showStyleModal = false;
-    },
-    
-    updateReplyStyle(style) {
-       this.replyStyle = style;
-       localStorage.setItem('reply_style', style);
-       this.closeStyleModal();
-     },
+
      
      toggleDeepThinking() {
        // 只有在选择 DeepSeek 模型时才允许切换
@@ -918,7 +857,7 @@ export default {
       const iconMap = {
         'doc': '📄', 'docx': '📄',
         'xls': '📊', 'xlsx': '📊',
-        'txt': '📝'
+        'txt': '📝', 'md': '📝'
       };
       return iconMap[ext] || '📎';
     },
@@ -1566,80 +1505,31 @@ html, body {
   pointer-events: none;
 }
 
-.toggle-icon {
-  font-size: 14px;
-}
-
 .toggle-text {
   font-weight: 500;
-}
-
-.toggle-indicator {
-  width: 12px;
-  height: 6px;
-  border-radius: 3px;
-  background: var(--border-color);
-  position: relative;
-  transition: all 0.2s ease;
-}
-
-.toggle-indicator.on {
-  background: #10b981;
-}
-
-.toggle-indicator::after {
-  content: '';
-  position: absolute;
-  top: -1px;
-  left: 0;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: white;
-  transition: all 0.2s ease;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-}
-
-.toggle-indicator.on::after {
-  transform: translateX(6px);
 }
 
 /* 深度思考开关移动端响应式样式 */
 @media (max-width: 640px) {
   .deep-thinking-toggle {
-    margin: 0 2px;
+    margin: 0;
   }
   
   .thinking-toggle-btn {
-    padding: 4px 8px;
-    font-size: 11px;
-    min-width: 60px;
-    gap: 4px;
-    border-radius: 12px;
-  }
-  
-  .toggle-icon {
-    font-size: 12px;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    font-size: 14px;
+    min-width: 32px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
   }
   
   .toggle-text {
-    display: none; /* 在小屏幕上隐藏文字，只显示图标 */
-  }
-  
-  .toggle-indicator {
-    width: 10px;
-    height: 5px;
-    border-radius: 2.5px;
-  }
-  
-  .toggle-indicator::after {
-    width: 7px;
-    height: 7px;
-    top: -1px;
-  }
-  
-  .toggle-indicator.on::after {
-    transform: translateX(4px);
+    display: none; /* 在小屏幕上隐藏文字 */
   }
 }
 
@@ -2034,28 +1924,39 @@ html, body {
   
   /* 深度思考开关移动端优化 */
   .deep-thinking-toggle {
-    margin: 0 2px;
+    margin: 0;
   }
   
   .thinking-toggle-btn {
-    padding: 4px 8px;
-    font-size: 11px;
-    min-width: 60px;
-    gap: 4px;
-    border-radius: 12px;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    font-size: 14px;
+    min-width: 32px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  
+  /* 移动端禁用hover效果，避免触摸后保持蓝色 */
+  .thinking-toggle-btn:hover:not(.disabled) {
+    background: var(--secondary-color);
+    color: var(--text-color);
+    border-color: var(--border-color);
+    transform: none;
+    box-shadow: none;
+  }
+  
+  .thinking-toggle-btn.active:hover {
+    background: var(--primary-color);
+    color: white;
+    border-color: var(--primary-color);
   }
   
   .toggle-text {
     display: none; /* 移动端隐藏文字，只显示图标 */
-  }
-  
-  .toggle-icon {
-    font-size: 12px;
-  }
-  
-  .toggle-indicator {
-    width: 10px;
-    height: 5px;
   }
 }
 
@@ -2084,29 +1985,37 @@ html, body {
   
   /* 深度思考开关极小屏幕优化 */
   .deep-thinking-toggle {
-    margin: 0 1px;
+    margin: 0;
   }
   
   .thinking-toggle-btn {
-    padding: 3px 6px;
-    font-size: 10px;
-    min-width: 50px;
-    gap: 3px;
-    border-radius: 10px;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    font-size: 12px;
+    min-width: 28px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
   }
   
-  .toggle-icon {
-    font-size: 11px;
+  /* 极小屏幕也禁用hover效果 */
+  .thinking-toggle-btn:hover:not(.disabled) {
+    background: var(--secondary-color);
+    color: var(--text-color);
+    border-color: var(--border-color);
+    transform: none;
+    box-shadow: none;
   }
   
-  .toggle-indicator {
-    width: 8px;
-    height: 4px;
+  .thinking-toggle-btn.active:hover {
+    background: var(--primary-color);
+    color: white;
+    border-color: var(--primary-color);
   }
   
-  .toggle-indicator::after {
-    width: 6px;
-    height: 6px;
-  }
+
 }
 </style>

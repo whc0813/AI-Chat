@@ -2,31 +2,83 @@
   <div class="modal-overlay" @click="closeModal">
     <div class="modal-container" @click.stop>
       <div class="modal-header">
-        <h3>API 密钥配置</h3>
+        <h3>设置</h3>
         <button class="close-btn" @click="closeModal">✕</button>
       </div>
       
       <div class="modal-body">
-        <div class="input-group">
-          <label for="deepseek-key">DeepSeek API Key:</label>
-          <input 
-            id="deepseek-key"
-            type="password" 
-            v-model="deepseekKey" 
-            placeholder="请输入 DeepSeek API Key"
-            class="api-input"
-          />
+        <!-- API 密钥配置区域 -->
+        <div class="settings-section">
+          <h4 class="section-title">API 密钥配置</h4>
+          <div class="input-group">
+            <label for="deepseek-key">DeepSeek API Key:</label>
+            <input 
+              id="deepseek-key"
+              type="password" 
+              v-model="deepseekKey" 
+              placeholder="请输入 DeepSeek API Key"
+              class="api-input"
+            />
+          </div>
+          
+          <div class="input-group">
+            <label for="glm-key">GLM API Key:</label>
+            <input 
+              id="glm-key"
+              type="password" 
+              v-model="glmKey" 
+              placeholder="请输入 GLM API Key"
+              class="api-input"
+            />
+          </div>
         </div>
-        
-        <div class="input-group">
-          <label for="glm-key">GLM API Key:</label>
-          <input 
-            id="glm-key"
-            type="password" 
-            v-model="glmKey" 
-            placeholder="请输入 GLM API Key"
-            class="api-input"
-          />
+
+        <!-- AI 参数配置区域 -->
+        <div class="settings-section">
+          <h4 class="section-title">AI 参数配置</h4>
+          <div class="input-group">
+            <label for="max-tokens">Max Tokens:</label>
+            <input 
+              id="max-tokens"
+              type="number" 
+              v-model.number="maxTokens" 
+              placeholder="最大输出token数量"
+              class="api-input"
+              min="1"
+              max="64000"
+            />
+            <small class="input-hint">控制AI回复的最大长度。GLM默认4K最大8K，DeepSeek默认4K最大8K(chat模式)或32K最大64K(reasoner模式)</small>
+          </div>
+          
+          <div class="input-group">
+            <label for="temperature">Temperature:</label>
+            <input 
+              id="temperature"
+              type="number" 
+              v-model.number="temperature" 
+              placeholder="创造性程度"
+              class="api-input"
+              min="0.01"
+              max="2.0"
+              step="0.01"
+            />
+            <small class="input-hint">控制回复的随机性和创造性。值越高越有创造性，值越低越确定性 (0.01-2.0，推荐0.7)</small>
+          </div>
+          
+          <div class="input-group">
+            <label for="top-p">Top P:</label>
+            <input 
+              id="top-p"
+              type="number" 
+              v-model.number="topP" 
+              placeholder="核采样参数"
+              class="api-input"
+              min="0.01"
+              max="0.99"
+              step="0.01"
+            />
+            <small class="input-hint">控制词汇选择的多样性。值越高考虑的词汇越多，值越低越聚焦 (0.01-0.99，推荐0.9)</small>
+          </div>
         </div>
       </div>
       
@@ -44,19 +96,32 @@ export default {
   data() {
     return {
       deepseekKey: '',
-      glmKey: ''
+      glmKey: '',
+      maxTokens: 8192,
+      temperature: 0.7,
+      topP: 0.9
     }
   },
   mounted() {
     // 从 localStorage 读取已保存的密钥
     this.deepseekKey = localStorage.getItem('deepseek_api_key') || '';
     this.glmKey = localStorage.getItem('glm_api_key') || '';
+    
+    // 从 localStorage 读取已保存的AI参数
+    this.maxTokens = parseInt(localStorage.getItem('ai_max_tokens')) || 8192;
+    this.temperature = parseFloat(localStorage.getItem('ai_temperature')) || 0.7;
+    this.topP = parseFloat(localStorage.getItem('ai_top_p')) || 0.9;
   },
   methods: {
     saveKeys() {
       // 保存密钥到 localStorage
       localStorage.setItem('deepseek_api_key', this.deepseekKey);
       localStorage.setItem('glm_api_key', this.glmKey);
+      
+      // 保存AI参数到 localStorage
+      localStorage.setItem('ai_max_tokens', this.maxTokens.toString());
+      localStorage.setItem('ai_temperature', this.temperature.toString());
+      localStorage.setItem('ai_top_p', this.topP.toString());
       
       // 关闭模态框
       this.closeModal();
@@ -125,6 +190,25 @@ export default {
 
 .modal-body {
   padding: 24px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.settings-section {
+  margin-bottom: 32px;
+}
+
+.settings-section:last-child {
+  margin-bottom: 0;
+}
+
+.section-title {
+  margin: 0 0 16px 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-color, #1f2937);
+  border-bottom: 1px solid var(--border-color, #e5e7eb);
+  padding-bottom: 8px;
 }
 
 .input-group {
@@ -155,6 +239,14 @@ export default {
   outline: none;
   border-color: var(--primary-color, #3b82f6);
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.input-hint {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-secondary, #6b7280);
+  line-height: 1.4;
 }
 
 .modal-footer {
@@ -213,8 +305,17 @@ export default {
     color: var(--text-color, #f9fafb);
   }
   
+  .section-title {
+    color: var(--text-color, #f9fafb);
+    border-bottom-color: var(--border-color, #4b5563);
+  }
+  
   .input-group label {
     color: var(--text-color, #f9fafb);
+  }
+  
+  .input-hint {
+    color: var(--text-secondary, #9ca3af);
   }
   
   .api-input {

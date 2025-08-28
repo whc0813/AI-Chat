@@ -305,10 +305,7 @@ export default {
       type: Boolean,
       default: false
     },
-    replyStyle: {
-      type: String,
-      default: 'balanced'
-    },
+
     isDeepThinking: {
       type: Boolean,
       default: false
@@ -885,21 +882,17 @@ export default {
                         this.currentAnswer += content;
                     }
                     
-                    // 优化流式更新：使用requestAnimationFrame和防抖
+                    // 优化流式更新：使用防抖机制，避免频繁更新
                     if (this.streamingUpdateTimer) {
                         clearTimeout(this.streamingUpdateTimer);
                     }
                     
                     this.streamingUpdateTimer = setTimeout(() => {
-                        // 使用requestAnimationFrame确保在浏览器下一帧渲染
-                        requestAnimationFrame(() => {
-                            // 强制Vue更新，但避免频繁的DOM操作
-                            this.$forceUpdate();
-                        });
-                    }, 100); // 增加到100ms，减少更新频率
+                        // 触发响应式更新，让Vue自然地重新渲染
+                        this.$nextTick();
+                    }, 100); // 减少更新频率
                 },
-                apiKeys,
-                this.replyStyle
+                apiKeys
             );
             
             // 更新Token统计信息
@@ -1053,21 +1046,17 @@ export default {
                             this.currentAnswer += content;
                         }
                         
-                        // 优化流式更新：使用requestAnimationFrame和防抖
+                        // 优化流式更新：使用防抖机制，避免频繁更新
                         if (this.streamingUpdateTimer) {
                             clearTimeout(this.streamingUpdateTimer);
                         }
                         
                         this.streamingUpdateTimer = setTimeout(() => {
-                            // 使用requestAnimationFrame确保在浏览器下一帧渲染
-                            requestAnimationFrame(() => {
-                                // 强制Vue更新，但避免频繁的DOM操作
-                                this.$forceUpdate();
-                            });
-                        }, 100); // 增加到100ms，减少更新频率
+                            // 触发响应式更新，让Vue自然地重新渲染
+                            this.$nextTick();
+                        }, 100); // 减少更新频率
                     },
-                    apiKeys,
-                    this.replyStyle
+                    apiKeys
                 );
                 
                 // 更新Token统计信息
@@ -1346,8 +1335,7 @@ export default {
                 this.displayTitle = finalTitle.trim(); 
             }
             },
-            apiKeys,
-            'concise'
+            apiKeys
         );
         
         // 完成后，向父组件emit最终标题
