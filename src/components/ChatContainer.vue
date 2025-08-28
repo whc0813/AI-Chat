@@ -3018,7 +3018,7 @@ export default {
 .chat-messages {
   flex-grow: 1;
   overflow-y: auto;
-  padding: 40px 40px 120px 40px; /* 增加足够的底部内边距，防止被输入框遮挡 */
+  padding: 20px 40px 200px 40px; /* 减少顶部内边距，保持足够的底部内边距 */
   background: var(--bg-color);
   scrollbar-width: thin;
   scrollbar-color: var(--primary-color) transparent;
@@ -4203,15 +4203,15 @@ button[disabled]:hover {
   }
 
   .chat-title {
-    padding: 20px 24px;
-    font-size: 1.3rem;
+    padding: 12px 24px;
+    font-size: 1.2rem;
     border-radius: 20px 20px 0 0;
     justify-content: center;
-    gap: 24px;
+    gap: 20px;
     display: flex;
     align-items: center;
     position: relative;
-    min-height: 64px;
+    min-height: 48px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
   }
 
@@ -4327,8 +4327,8 @@ button[disabled]:hover {
   }
 
   .chat-messages {
-    padding: 28px 24px;
-    padding-bottom: 160px;
+    padding: 16px 24px;
+    padding-bottom: 240px;
     gap: 20px;
   }
 

@@ -40,16 +40,16 @@
           ref="chatContainer"
         />
         
-        <!-- 输入区域移动到这里 -->
-        <div class="input-area" v-show="shouldShowInputArea">
-          <div class="input-content">
+        <!-- DeepSeek 风格输入区域 -->
+        <div class="deepseek-input-area" v-show="shouldShowInputArea">
+          <div class="input-card">
+            <!-- 文件预览区域 -->
             <div v-if="selectedFile" class="file-preview">
               <div class="file-preview-header">
                 <span class="file-icon">{{ getFileIcon(selectedFile.name) }}</span>
                 <span class="file-preview-name">{{ selectedFile.name }}</span>
                 <button @click="removeFile" class="remove-file-btn">×</button>
               </div>
-              
               <div class="file-preview-content">
                 <div class="file-info">
                   <p>文件大小: {{ formatFileSize(selectedFile.size) }}</p>
@@ -60,64 +60,92 @@
               </div>
             </div>
 
-            <div class="input-controls">
-              <div class="add-btn-container" :class="{ 'dropdown-open': showAddDropdown }">
-                <button class="add-btn" @click="toggleAddDropdown" :disabled="isGenerating" title="添加选项">
-                  +
-                </button>
-                <div v-if="showAddDropdown" class="add-dropdown" @click.stop>
-                  <div class="dropdown-item" @click="triggerFileUpload">
-                    <span class="dropdown-icon">📎</span>
-                    <span class="dropdown-text">上传文件</span>
-                  </div>
+            <!-- 上层：输入框区域 -->
+            <div class="input-section">
+              <div class="input-wrapper">
+                <div class="chat-input" 
+                     @click="focusTextInput" 
+                     contenteditable="true" 
+                     ref="textInput" 
+                     @input="handleTextInput" 
+                     @keydown="handleInputKeyDown" 
+                     placeholder="询问任何问题...">
                 </div>
+
               </div>
-              <div class="chat-input" @click="focusTextInput" contenteditable="true" ref="textInput" @input="handleTextInput" @keydown="handleInputKeyDown" placeholder="询问任何问题">
-              </div>
-              <input
-                type="file"
-                ref="fileInput"
-                @change="handleFileChange"
-                style="display: none"
-                accept=".doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.txt,text/plain,.md,text/markdown"
-              />
-              <!-- 深度思考开关按钮 -->
-              <div class="deep-thinking-toggle" :class="{ disabled: !isDeepSeekModel }" :title="!isDeepSeekModel ? '仅 DeepSeek 模型支持' : ''">
-                <button 
-                  class="thinking-toggle-btn"
-                  :class="{ active: isDeepThinking, disabled: !isDeepSeekModel }"
-                  @click="toggleDeepThinking"
-                  :disabled="!isDeepSeekModel"
-                >
-                  <span class="toggle-text sm:inline hidden">深度思考</span>
-                  <span class="toggle-icon sm:hidden">🧠</span>
+            </div>
+
+            <!-- 下层：功能按钮区域 -->
+            <div class="feature-buttons">
+              <div class="button-row">
+                <button class="feature-btn primary" 
+                        :class="{ active: isDeepThinking, disabled: !isDeepSeekModel }"
+                        @click="toggleDeepThinking"
+                        :disabled="!isDeepSeekModel"
+                        :title="!isDeepSeekModel ? '仅 DeepSeek 模型支持' : ''">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2Z"/>
+                    <path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2Z"/>
+                  </svg>
+                  <span>深度思考</span>
                 </button>
-              </div>
-              <div class="button-group">
-                <button 
-                  class="action-btn"
-                  @click="toggleVoiceInput"
-                  :class="{ active: isSpeechRecognizing, disabled: isGenerating }"
-                  :disabled="!isSpeechSupported || isGenerating"
-                  title="语音输入">
-                  🎤
+                
+                <button class="feature-btn secondary" 
+                        @click="toggleVoiceInput"
+                        :class="{ active: isSpeechRecognizing, disabled: isGenerating }"
+                        :disabled="!isSpeechSupported || isGenerating">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                    <line x1="12" y1="19" x2="12" y2="23"/>
+                    <line x1="8" y1="23" x2="16" y2="23"/>
+                  </svg>
+                  <span>语音输入</span>
                 </button>
-                <button
-                  class="action-btn send-btn"
-                  @click="isGenerating ? stopGeneration() : handleSend()"
-                  :class="{ 'stop-btn': isGenerating }"
-                  title="发送消息">
-                  {{ isGenerating ? '⏹' : '⚡' }}
+                
+                <button class="feature-btn attachment-btn" @click="triggerFileUpload" :disabled="isGenerating" title="添加附件">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66L9.64 16.2a2 2 0 0 1-2.83-2.83l8.49-8.49"/>
+                  </svg>
+                  <span>附件</span>
+                </button>
+                
+                <button class="feature-btn send-btn" 
+                        @click="isGenerating ? stopGeneration() : handleSend()"
+                        :class="{ 'stop-btn': isGenerating }"
+                        title="发送消息">
+                  <svg v-if="!isGenerating" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="22" y1="2" x2="11" y2="13"/>
+                    <polygon points="22,2 15,22 11,13 2,9"/>
+                  </svg>
+                  <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                    <rect x="6" y="6" width="12" height="12" rx="2"/>
+                  </svg>
+                  <span v-if="!isGenerating">发送</span>
+                  <span v-else>停止</span>
                 </button>
               </div>
             </div>
+
+            <!-- 隐藏的文件输入 -->
+            <input
+              type="file"
+              ref="fileInput"
+              @change="handleFileChange"
+              style="display: none"
+              accept=".doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.txt,text/plain,.md,text/markdown"
+            />
           </div>
 
-          <div v-if="isSpeechRecognizing" class="listening-indicator">
-            正在聆听中...
+          <!-- 状态指示器 -->
+          <div v-if="isSpeechRecognizing" class="status-indicator listening">
+            <div class="indicator-content">
+              <div class="pulse-dot"></div>
+              <span>正在聆听中...</span>
+            </div>
           </div>
-          <div v-if="speechError" class="speech-error-indicator">
-            {{ speechError }}
+          <div v-if="speechError" class="status-indicator error">
+            <span>{{ speechError }}</span>
           </div>
         </div>
       </div>
@@ -1324,14 +1352,13 @@ html, body {
   border-radius: 0;
 }
 
-/* 输入框样式 - ChatGPT风格 */
-.input-area {
+/* DeepSeek 风格输入区域样式 */
+.deepseek-input-area {
   position: absolute;
   bottom: 0;
   left: 0;
   right: 0;
   background: var(--bg-color);
-  border-top: 1px solid var(--border-color);
   padding: 20px;
   z-index: 10;
   opacity: 1;
@@ -1340,26 +1367,312 @@ html, body {
   will-change: opacity, transform;
 }
 
-.input-content {
-  max-width: 768px;
+.input-card {
+  max-width: 800px;
   margin: 0 auto;
-}
-
-.input-controls {
-  display: flex;
-  align-items: center;
-  gap: 12px;
   background: var(--card-bg);
   border: 1px solid var(--border-color);
-  border-radius: 24px;
+  border-radius: 16px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.input-card:hover {
+  box-shadow: 0 6px 30px rgba(0, 0, 0, 0.12);
+}
+
+/* 输入框区域 */
+.input-section {
+  padding: 16px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.input-wrapper {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  background: var(--bg-color);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
   padding: 8px 16px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   transition: all 0.2s ease;
 }
 
-.input-controls:focus-within {
+.input-wrapper:focus-within {
   border-color: var(--primary-color);
-  box-shadow: 0 2px 12px rgba(59, 130, 246, 0.15);
+  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.1);
+}
+
+.input-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* 功能按钮区域中的附件按钮样式 */
+.feature-btn.attachment-btn {
+  background: var(--secondary-color);
+  color: var(--text-secondary);
+  border-color: var(--border-color);
+}
+
+.feature-btn.attachment-btn:hover:not(:disabled) {
+  background: var(--border-color);
+  color: var(--text-color);
+  border-color: var(--primary-color);
+}
+
+.feature-btn.attachment-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 功能按钮区域中的发送按钮样式 */
+.feature-btn.send-btn {
+  background: var(--primary-color);
+  color: white;
+  border-color: var(--primary-color);
+}
+
+.feature-btn.send-btn:hover {
+  background: #0ea5e9;
+  border-color: #0ea5e9;
+  transform: translateY(-1px);
+}
+
+.feature-btn.send-btn.stop-btn {
+  background: var(--error-color);
+  border-color: var(--error-color);
+}
+
+.feature-btn.send-btn.stop-btn:hover {
+  background: #dc2626;
+  border-color: #dc2626;
+}
+
+/* 保留原有的独立按钮样式（如果其他地方还在使用） */
+.attachment-btn:not(.feature-btn) {
+  width: 36px;
+  height: 36px;
+  border: none;
+  background: var(--secondary-color);
+  color: var(--text-secondary);
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.attachment-btn:not(.feature-btn):hover:not(:disabled) {
+  background: var(--border-color);
+  color: var(--text-color);
+}
+
+.attachment-btn:not(.feature-btn):disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.send-btn:not(.feature-btn) {
+  width: 36px;
+  height: 36px;
+  border: none;
+  background: var(--primary-color);
+  color: white;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.send-btn:not(.feature-btn):hover {
+  background: #0ea5e9;
+  transform: translateY(-1px);
+}
+
+.send-btn:not(.feature-btn).stop-btn {
+  background: var(--error-color);
+}
+
+.send-btn:not(.feature-btn).stop-btn:hover {
+  background: #dc2626;
+}
+
+/* 功能按钮区域 */
+.feature-buttons {
+  padding: 12px 16px;
+}
+
+.button-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.button-row .feature-btn.primary {
+  margin-right: auto;
+}
+
+.button-row .feature-btn:not(.primary) {
+  margin-left: 0;
+}
+
+.feature-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 20px;
+  background: var(--bg-color);
+  color: var(--text-color);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.feature-btn:hover {
+  border-color: var(--primary-color);
+  background: rgba(14, 165, 233, 0.05);
+}
+
+.feature-btn.primary {
+  background: var(--bg-color);
+  color: var(--primary-color);
+  border-color: var(--primary-color);
+}
+
+.feature-btn.primary:hover {
+  background: #0ea5e9;
+  border-color: #0ea5e9;
+  color: white;
+}
+
+/* 移动端禁用hover效果 */
+@media (max-width: 768px) {
+  .feature-btn.primary:hover:not(.active) {
+    background: var(--bg-color) !important;
+    border-color: var(--primary-color) !important;
+    color: var(--primary-color) !important;
+  }
+}
+
+/* 触摸设备禁用hover效果 */
+@media (hover: none) {
+  .feature-btn.primary:hover:not(.active) {
+    background: var(--bg-color) !important;
+    border-color: var(--primary-color) !important;
+    color: var(--primary-color) !important;
+  }
+}
+
+.feature-btn.primary.active {
+  background: #0ea5e9;
+  border-color: #0ea5e9;
+  color: white;
+  box-shadow: 0 0 20px rgba(14, 165, 233, 0.4);
+  animation: glow-pulse 2s ease-in-out infinite;
+}
+
+@keyframes glow-pulse {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(14, 165, 233, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 30px rgba(14, 165, 233, 0.6);
+  }
+}
+
+.feature-btn.secondary {
+  background: var(--secondary-color);
+  color: var(--text-secondary);
+}
+
+.feature-btn.secondary:hover {
+  background: var(--border-color);
+  color: var(--text-color);
+}
+
+.feature-btn.secondary.active {
+  background: var(--primary-color);
+  color: white;
+  border-color: var(--primary-color);
+}
+
+.feature-btn.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: var(--bg-color) !important;
+  color: var(--text-color) !important;
+  border-color: var(--border-color) !important;
+}
+
+.feature-btn.disabled:hover {
+  border-color: var(--border-color) !important;
+  background: var(--bg-color) !important;
+  color: var(--text-color) !important;
+  transform: none !important;
+}
+
+.feature-btn svg {
+  flex-shrink: 0;
+}
+
+/* 状态指示器 */
+.status-indicator {
+  margin-top: 12px;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 14px;
+  text-align: center;
+}
+
+.status-indicator.listening {
+  background: rgba(34, 197, 94, 0.1);
+  color: var(--success-color);
+  border: 1px solid rgba(34, 197, 94, 0.2);
+}
+
+.status-indicator.error {
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--error-color);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.indicator-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.pulse-dot {
+  width: 8px;
+  height: 8px;
+  background: var(--success-color);
+  border-radius: 50%;
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(1.2);
+  }
 }
 
 /* 移除重复的chat-input样式定义，使用下方更完整的定义 */
@@ -1812,60 +2125,66 @@ html, body {
   color: white;
 }
 
-/* 语音转录样式 */
+/* DeepSeek 风格聊天输入框 */
 .chat-input {
   flex: 1;
   position: relative;
-  min-height: 24px;
-  padding: 8px 12px;
-  border: 1px solid var(--border-color);
-  border-radius: 12px;
-  background: var(--bg-color);
+  min-height: 28px;
+  padding: 8px 0;
+  border: none;
+  background: transparent;
   color: var(--text-color);
   cursor: text;
   outline: none;
   line-height: 1.5;
   font-size: 16px;
-}
-
-.chat-input:focus {
-  border-color: var(--primary-color);
-  box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.1);
+  resize: none;
+  overflow-y: auto;
+  max-height: 120px;
 }
 
 .chat-input:empty:before {
   content: attr(placeholder);
   color: var(--text-secondary);
-  opacity: 0.8;
+  opacity: 0.7;
   pointer-events: none;
 }
 
 .chat-input:focus:empty:before {
-  display: none;
+  opacity: 0.5;
 }
 
 /* 平板端适配 */
 @media (max-width: 1024px) and (min-width: 769px) {
-  .input-controls {
-    gap: 10px;
-    padding: 8px 14px;
+  .deepseek-input-area {
+    padding: 16px;
   }
   
-  .thinking-toggle-btn {
-    padding: 5px 10px;
-    font-size: 11px;
-    min-width: 70px;
-    gap: 5px;
+  .input-card {
+    max-width: 100%;
   }
   
-  .toggle-text {
-    font-size: 11px;
+  .input-section {
+    padding: 12px;
+  }
+  
+  .feature-buttons {
+    padding: 8px 12px;
+  }
+  
+  .feature-btn {
+    font-size: 12px;
+    padding: 6px 10px;
+  }
+  
+  .button-row {
+    gap: 6px;
   }
 }
 
 /* 移动端适配 */
 @media (max-width: 768px) {
-  .input-area {
+  .deepseek-input-area {
     position: fixed;
     bottom: 0;
     left: 0;
@@ -1876,83 +2195,115 @@ html, body {
     z-index: 999;
   }
   
-  /* 移动端下拉菜单优化 */
-  .add-dropdown {
-    z-index: 1002;
-    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.2);
-    backdrop-filter: blur(10px);
+  .input-card {
+    max-width: 100%;
+    border-radius: 12px;
   }
   
-  .input-controls {
-    border-radius: 20px;
-    padding: 8px 12px;
-    gap: 8px;
-    min-width: 0;
+  .input-section {
+    padding: 12px;
   }
   
-  .add-btn-container {
-    position: relative;
-  }
-  
-  .add-dropdown {
-    left: 0;
+  .input-wrapper {
+    padding: 6px 12px;
+    border-radius: 10px;
   }
   
   .chat-input {
     font-size: 16px; /* 防止iOS缩放 */
-    min-height: 20px;
-    flex: 1;
-    min-width: 0;
+    min-height: 24px;
+    padding: 6px 0;
   }
   
-  .add-btn,
-  .action-btn {
+  .attachment-btn,
+  .send-btn {
     width: 32px;
     height: 32px;
-    font-size: 14px;
-    border-radius: 8px;
+    border-radius: 6px;
     flex-shrink: 0;
-    min-width: 32px;
   }
   
-  .button-group {
+  .attachment-btn svg,
+  .send-btn svg {
+    width: 14px;
+    height: 14px;
+  }
+  
+  .feature-buttons {
+    padding: 8px 12px;
+  }
+  
+  .button-row {
     gap: 6px;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  
+  .button-row::-webkit-scrollbar {
+    display: none;
+  }
+  
+  .feature-btn {
+    font-size: 12px;
+    padding: 6px 10px;
+    border-radius: 16px;
     flex-shrink: 0;
-    display: flex;
-    align-items: center;
+    white-space: nowrap;
   }
   
-  /* 深度思考开关移动端优化 */
-  .deep-thinking-toggle {
-    margin: 0;
+  .feature-btn svg {
+    width: 12px;
+    height: 12px;
   }
   
-  .thinking-toggle-btn {
-    width: 32px;
-    height: 32px;
-    padding: 0;
-    font-size: 14px;
-    min-width: 32px;
-    border-radius: 8px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
+  .feature-btn span {
+    display: none;
   }
   
-  /* 移动端禁用hover效果，避免触摸后保持蓝色 */
-  .thinking-toggle-btn:hover:not(.disabled) {
-    background: var(--secondary-color);
-    color: var(--text-color);
+  .feature-btn.primary span {
+    display: inline;
+  }
+  
+  /* 移动端附件和发送按钮隐藏文字 */
+  .feature-btn.attachment-btn span,
+  .feature-btn.send-btn span {
+    display: none;
+  }
+  
+  /* 移动端状态指示器 */
+  .status-indicator {
+    margin-top: 8px;
+    padding: 6px 12px;
+    font-size: 13px;
+  }
+  
+  /* 移动端禁用hover效果 */
+  .feature-btn:hover {
     border-color: var(--border-color);
+    background: var(--bg-color);
     transform: none;
-    box-shadow: none;
   }
   
-  .thinking-toggle-btn.active:hover {
+  .feature-btn.primary:hover {
     background: var(--primary-color);
-    color: white;
     border-color: var(--primary-color);
+  }
+  
+  .feature-btn.secondary:hover {
+    background: var(--secondary-color);
+    color: var(--text-secondary);
+  }
+  
+  .feature-btn.attachment-btn:hover,
+  .feature-btn.send-btn:hover {
+    transform: none;
+  }
+  
+  .attachment-btn:hover,
+  .send-btn:hover {
+    transform: none;
   }
   
   .toggle-text {
@@ -1962,60 +2313,47 @@ html, body {
 
 /* 极小屏幕优化 */
 @media (max-width: 360px) {
-  .input-area {
+  .deepseek-input-area {
     padding: 8px;
   }
   
-  .input-controls {
-    padding: 6px 10px;
-    gap: 6px;
+  .input-section {
+    padding: 8px;
   }
   
-  .add-btn,
-  .action-btn {
+  .input-wrapper {
+    padding: 6px 10px;
+  }
+  
+  .attachment-btn,
+  .send-btn {
     width: 28px;
     height: 28px;
-    font-size: 12px;
-    min-width: 28px;
   }
   
-  .button-group {
+  .attachment-btn svg,
+  .send-btn svg {
+    width: 12px;
+    height: 12px;
+  }
+  
+  .feature-buttons {
+    padding: 6px 8px;
+  }
+  
+  .button-row {
     gap: 4px;
   }
   
-  /* 深度思考开关极小屏幕优化 */
-  .deep-thinking-toggle {
-    margin: 0;
+  .feature-btn {
+    font-size: 11px;
+    padding: 4px 8px;
+    border-radius: 14px;
   }
   
-  .thinking-toggle-btn {
-    width: 28px;
-    height: 28px;
-    padding: 0;
-    font-size: 12px;
-    min-width: 28px;
-    border-radius: 8px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
+  .feature-btn svg {
+    width: 10px;
+    height: 10px;
   }
-  
-  /* 极小屏幕也禁用hover效果 */
-  .thinking-toggle-btn:hover:not(.disabled) {
-    background: var(--secondary-color);
-    color: var(--text-color);
-    border-color: var(--border-color);
-    transform: none;
-    box-shadow: none;
-  }
-  
-  .thinking-toggle-btn.active:hover {
-    background: var(--primary-color);
-    color: white;
-    border-color: var(--primary-color);
-  }
-  
-
 }
 </style>
