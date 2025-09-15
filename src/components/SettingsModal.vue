@@ -79,6 +79,73 @@
             />
             <small class="input-hint">控制词汇选择的多样性。值越高考虑的词汇越多，值越低越聚焦 (0.01-0.99，推荐0.9)</small>
           </div>
+          
+          <div class="input-group">
+            <label for="system-prompt">系统提示词:</label>
+            <textarea 
+              id="system-prompt"
+              v-model="systemPrompt" 
+              placeholder="请输入自定义系统提示词，用于指导AI的行为和回复风格"
+              class="api-input system-prompt-textarea"
+              rows="4"
+            ></textarea>
+            <small class="input-hint">自定义系统提示词可以指导AI的行为、回复风格和专业领域。留空则使用默认设置</small>
+            
+            <!-- 系统提示词模板 -->
+            <div class="prompt-templates">
+              <label class="templates-label">快速模板:</label>
+              <div class="template-buttons">
+                <button 
+                  type="button" 
+                  class="template-btn" 
+                  @click="applyTemplate('assistant')"
+                  title="通用助手模式"
+                >
+                  📝 通用助手
+                </button>
+                <button 
+                  type="button" 
+                  class="template-btn" 
+                  @click="applyTemplate('programmer')"
+                  title="编程专家模式"
+                >
+                  💻 编程专家
+                </button>
+                <button 
+                  type="button" 
+                  class="template-btn" 
+                  @click="applyTemplate('translator')"
+                  title="翻译专家模式"
+                >
+                  🌐 翻译专家
+                </button>
+                <button 
+                  type="button" 
+                  class="template-btn" 
+                  @click="applyTemplate('writer')"
+                  title="写作助手模式"
+                >
+                  ✍️ 写作助手
+                </button>
+                <button 
+                  type="button" 
+                  class="template-btn" 
+                  @click="applyTemplate('teacher')"
+                  title="教学助手模式"
+                >
+                  🎓 教学助手
+                </button>
+                <button 
+                  type="button" 
+                  class="template-btn" 
+                  @click="applyTemplate('clear')"
+                  title="清空系统提示词"
+                >
+                  🗑️ 清空
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
       
@@ -99,7 +166,8 @@ export default {
       glmKey: '',
       maxTokens: 8192,
       temperature: 0.7,
-      topP: 0.9
+      topP: 0.9,
+      systemPrompt: ''
     }
   },
   mounted() {
@@ -111,6 +179,7 @@ export default {
     this.maxTokens = parseInt(localStorage.getItem('ai_max_tokens')) || 8192;
     this.temperature = parseFloat(localStorage.getItem('ai_temperature')) || 0.7;
     this.topP = parseFloat(localStorage.getItem('ai_top_p')) || 0.9;
+    this.systemPrompt = localStorage.getItem('ai_system_prompt') || '';
   },
   methods: {
     saveKeys() {
@@ -122,12 +191,25 @@ export default {
       localStorage.setItem('ai_max_tokens', this.maxTokens.toString());
       localStorage.setItem('ai_temperature', this.temperature.toString());
       localStorage.setItem('ai_top_p', this.topP.toString());
+      localStorage.setItem('ai_system_prompt', this.systemPrompt);
       
       // 关闭模态框
       this.closeModal();
     },
     closeModal() {
       this.$emit('close');
+    },
+    applyTemplate(type) {
+      const templates = {
+        assistant: '你是一个友善、专业的AI助手。请用简洁明了的语言回答用户的问题，提供准确有用的信息。如果不确定答案，请诚实说明。',
+        programmer: '你是一位经验丰富的编程专家。请提供清晰、高质量的代码解决方案，包含详细的注释和最佳实践建议。优先考虑代码的可读性、性能和安全性。',
+        translator: '你是一位专业的翻译专家。请提供准确、自然、符合目标语言习惯的翻译。保持原文的语调和风格，必要时提供文化背景解释。',
+        writer: '你是一位专业的写作助手。请帮助用户改进文本的结构、语法和表达方式。提供建设性的修改建议，保持原文的核心意思和个人风格。',
+        teacher: '你是一位耐心的教学助手。请用循序渐进的方式解释概念，提供具体例子，鼓励学习者思考。根据用户的理解程度调整解释的深度。',
+        clear: ''
+      };
+      
+      this.systemPrompt = templates[type] || '';
     }
   }
 }
@@ -241,6 +323,56 @@ export default {
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
+.system-prompt-textarea {
+  resize: vertical;
+  min-height: 100px;
+  font-family: inherit;
+  line-height: 1.5;
+}
+
+.prompt-templates {
+  margin-top: 12px;
+}
+
+.templates-label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 500;
+  color: var(--text-color, #1f2937);
+  font-size: 14px;
+}
+
+.template-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.template-btn {
+  padding: 6px 12px;
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 6px;
+  background: var(--secondary-color, #f3f4f6);
+  color: var(--text-color, #1f2937);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.template-btn:hover {
+  background: var(--primary-color, #3b82f6);
+  color: white;
+  border-color: var(--primary-color, #3b82f6);
+}
+
+.template-btn:active {
+  transform: translateY(1px);
+}
+
 .input-hint {
   display: block;
   margin-top: 4px;
@@ -322,6 +454,28 @@ export default {
     background: var(--input-bg, #374151);
     border-color: var(--border-color, #4b5563);
     color: var(--text-color, #f9fafb);
+  }
+  
+  .system-prompt-textarea {
+    background: var(--input-bg, #374151);
+    border-color: var(--border-color, #4b5563);
+    color: var(--text-color, #f9fafb);
+  }
+  
+  .templates-label {
+    color: var(--text-color, #f9fafb);
+  }
+  
+  .template-btn {
+    background: var(--secondary-color, #374151);
+    border-color: var(--border-color, #4b5563);
+    color: var(--text-secondary, #9ca3af);
+  }
+  
+  .template-btn:hover {
+    background: var(--primary-color, #3b82f6);
+    color: white;
+    border-color: var(--primary-color, #3b82f6);
   }
   
   .modal-footer {

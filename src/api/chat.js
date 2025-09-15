@@ -39,6 +39,16 @@ export const streamWithGLM = async (messages, onChunk, apiKey) => {
   const maxTokens = parseInt(localStorage.getItem('ai_max_tokens')) || 8192;
   const temperature = parseFloat(localStorage.getItem('ai_temperature')) || 0.7;
   const topP = parseFloat(localStorage.getItem('ai_top_p')) || 0.9;
+  const systemPrompt = localStorage.getItem('ai_system_prompt') || '';
+  
+  // 如果有系统提示词，添加到消息开头
+  let processedMessages = [...messages];
+  if (systemPrompt.trim()) {
+    processedMessages = [
+      { role: 'system', content: systemPrompt.trim() },
+      ...messages
+    ];
+  }
   
   try {
     abortController = new AbortController();
@@ -53,7 +63,7 @@ export const streamWithGLM = async (messages, onChunk, apiKey) => {
       },
       body: JSON.stringify({
         model: "glm-4-flash",
-        messages: messages,
+        messages: processedMessages,
         stream: true,
         temperature: temperature,
         top_p: topP,
@@ -127,6 +137,16 @@ export const streamWithDeepSeek = async (messages, model, onChunk, apiKey) => {
   const maxTokens = parseInt(localStorage.getItem('ai_max_tokens')) || 8192;
   const temperature = parseFloat(localStorage.getItem('ai_temperature')) || 0.7;
   const topP = parseFloat(localStorage.getItem('ai_top_p')) || 0.9;
+  const systemPrompt = localStorage.getItem('ai_system_prompt') || '';
+  
+  // 如果有系统提示词，添加到消息开头
+  let processedMessages = [...messages];
+  if (systemPrompt.trim()) {
+    processedMessages = [
+      { role: 'system', content: systemPrompt.trim() },
+      ...messages
+    ];
+  }
   
   try {
     // 创建AbortController
@@ -135,7 +155,7 @@ export const streamWithDeepSeek = async (messages, model, onChunk, apiKey) => {
     const deepseekClient = getDeepSeekClient(apiKey);
     
     const stream = await deepseekClient.chat.completions.create({
-      messages: messages,
+      messages: processedMessages,
       model: model,
       stream: true,
       temperature: temperature,
