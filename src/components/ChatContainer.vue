@@ -156,10 +156,12 @@
             <span>思考过程：</span>
             <span class="toggle-icon">{{ isCurrentThinkingExpanded ? '▼' : '▶' }}</span>
           </div>
-          <div class="thinking-text" v-if="isCurrentThinkingExpanded" v-html="renderMarkdown(currentThinking)">
+          <div class="thinking-text" v-if="isCurrentThinkingExpanded">
+            <pre class="streaming-raw-text">{{ currentThinking }}</pre>
           </div>
         </div>
-        <div v-if="currentAnswer" class="plain-content" v-html="renderMarkdown(currentAnswer)">
+        <div v-if="currentAnswer" class="plain-content">
+          <pre class="streaming-raw-text">{{ currentAnswer }}</pre>
         </div>
         <div v-if="!currentAnswer && !currentThinking" class="loading-indicator">
           正在生成回复...
@@ -3099,6 +3101,20 @@ export default {
 .plain-content li,
 .thinking-text li {
   margin: 0.6em 0; /* 增加列表项间距 */
+}
+
+/* 流式输出原始文本样式 */
+.streaming-raw-text {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 15px;
+  line-height: 1.6;
+  margin: 0;
+  padding: 0;
+  color: var(--text-color);
+  background: transparent;
+  border: none;
 }
 
 .model-selector select {

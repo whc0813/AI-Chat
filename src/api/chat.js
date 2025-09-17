@@ -222,7 +222,7 @@ export const summarizeTitle = async (messages, apiKey) => {
   }
 };
 
-// 获取回复风格的系统提示
+
 // 统一流式调用方法
 export const chatWithAI = async (messages, model, onChunk, apiKeys) => {
   if (model.startsWith('glm-')) {
